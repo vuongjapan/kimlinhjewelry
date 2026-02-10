@@ -12,12 +12,14 @@ const products = [
 ];
 
 function getGoldSellPrice(prices: GoldPrice[], karat: string): number | null {
-  // Match karat to gold price type
+  // Map karat to price types from vangmlc.vn
+  // The API returns: Nhẫn Ép Vỉ 9999 (vàng ta), Trang Sức Vàng, Vàng Tây 10K
+  // Prices are in nghìn đồng/chỉ (e.g., "16.500" = 16,500 nghìn đồng)
   const karatMap: Record<string, string[]> = {
-    '18K': ['18K', '18k', '750'],
-    '14K': ['14K', '14k', '585'],
-    '10K': ['10K', '10k', '416'],
-    '24K': ['24K', '24k', '9999', 'SJC'],
+    '18K': ['Trang Sức', '18K', '18k', '750'],
+    '14K': ['Trang Sức', '14K', '14k', '585'],
+    '10K': ['Tây 10K', '10K', '10k', '416'],
+    '24K': ['Nhẫn Ép Vỉ', '9999', 'SJC'],
   };
   const keywords = karatMap[karat] || [karat];
   for (const price of prices) {
