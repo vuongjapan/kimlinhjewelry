@@ -54,7 +54,7 @@ const DomesticGoldPrice = () => {
               </div>
               <div className="px-4 md:px-6 py-3 bg-secondary/30">
                 <p className="text-xs text-muted-foreground font-body text-center">
-                  Đơn vị: nghìn đồng/chỉ • Giá mang tính tham khảo {updatedAt && `• Cập nhật: ${updatedAt}`}
+                  Đơn vị: nghìn đồng/chỉ • Giá mang tính tham khảo {updatedAt && ` • Cập nhật: ${updatedAt}`}
                 </p>
               </div>
             </>

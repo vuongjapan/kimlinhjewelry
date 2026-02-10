@@ -7,8 +7,16 @@ export interface GoldPrice {
   category: string;
 }
 
+export interface WorldGoldData {
+  price: number;
+  change: number;
+  changePercent: number;
+  updatedAt: string;
+}
+
 interface GoldPriceData {
   prices: GoldPrice[];
+  worldGold: WorldGoldData;
   updatedAt: string;
   source: string;
 }
