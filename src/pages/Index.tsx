@@ -1,8 +1,7 @@
 import Navbar from '@/components/Navbar';
 import HeroSection from '@/components/HeroSection';
 import WorldGoldPrice from '@/components/WorldGoldPrice';
-import DomesticGoldPrice from '@/components/DomesticGoldPrice';
-import SilverPrice from '@/components/SilverPrice';
+import DomesticPrices from '@/components/DomesticPrices';
 import ProductShowcase from '@/components/ProductShowcase';
 import InvestmentKnowledge from '@/components/InvestmentKnowledge';
 import ContactSection from '@/components/ContactSection';
@@ -17,8 +16,7 @@ const Index = () => {
       <main>
         <HeroSection />
         <WorldGoldPrice />
-        <DomesticGoldPrice />
-        <SilverPrice />
+        <DomesticPrices />
         <ProductShowcase />
         <InvestmentKnowledge />
         <ContactSection />
