@@ -89,7 +89,7 @@ const DomesticPrices = () => {
               {renderTable(goldPrices, goldLoading, goldError, 'vàng', goldUpdated, 'nghìn đồng/chỉ')}
             </TabsContent>
             <TabsContent value="silver" className="mt-0">
-              {renderTable(silverPrices, silverLoading, silverError, 'bạc', silverUpdated, 'nghìn đồng/chỉ')}
+              {renderTable(silverPrices, silverLoading, silverError, 'bạc', silverUpdated, 'VNĐ/lượng')}
             </TabsContent>
           </Tabs>
         </div>
