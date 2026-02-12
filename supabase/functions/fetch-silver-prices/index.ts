@@ -5,18 +5,118 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-interface ApiItem {
-  [key: string]: string;
+interface SilverPriceItem {
+  type: string;
+  buy: string;
+  sell: string;
 }
 
-const FALLBACK_PRICES = [
-  { type: "Bạc 999", buy: "3.020", sell: "3.120", unit: "triệu đồng/lượng" },
+interface CachedData {
+  prices: SilverPriceItem[];
+  updatedAt: string;
+  source: string;
+}
+
+const FALLBACK_PRICES: SilverPriceItem[] = [
+  { type: "Bạc miếng Phú Quý 999 1 lượng", buy: "3.180.000", sell: "3.280.000" },
+  { type: "Bạc thỏi Phú Quý 999 5-10 lượng", buy: "3.180.000", sell: "3.280.000" },
+  { type: "Bạc Sư Tử 999 - 1 lượng", buy: "3.200.000", sell: "3.290.000" },
 ];
 
-function formatPrice(raw: string): string {
-  const num = parseInt(raw, 10);
-  if (isNaN(num)) return raw;
-  return num.toLocaleString("vi-VN");
+const CAFEF_URL = "https://cafef.vn/du-lieu/gia-bac-hom-nay/trong-nuoc.chn";
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// In-memory cache
+let cache: CachedData | null = null;
+let cacheTimestamp = 0;
+let fetchInProgress = false;
+
+function formatVND(value: string): string {
+  const num = parseFloat(value.replace(/,/g, ''));
+  if (isNaN(num)) return value;
+  const dong = Math.round(num * 1_000_000);
+  return dong.toLocaleString('vi-VN');
+}
+
+async function fetchFromFirecrawl(): Promise<CachedData> {
+  const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
+  if (!apiKey) throw new Error('FIRECRAWL_API_KEY not configured');
+
+  const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      url: CAFEF_URL,
+      formats: ['extract'],
+      extract: {
+        prompt: 'Extract the domestic silver price table (bảng giá bạc trong nước). For each row extract the silver type name, buy price (giá mua), and sell price (giá bán). Return all rows.',
+        schema: {
+          type: 'object',
+          properties: {
+            silverPrices: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  type: { type: 'string' },
+                  buy: { type: 'string' },
+                  sell: { type: 'string' },
+                },
+                required: ['type', 'buy', 'sell'],
+              },
+            },
+          },
+          required: ['silverPrices'],
+        },
+      },
+      waitFor: 10000,
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Firecrawl error [${response.status}]: ${errText}`);
+  }
+
+  const result = await response.json();
+  const extractData = result.data?.extract || result.extract;
+  const rawPrices: SilverPriceItem[] = extractData?.silverPrices || [];
+
+  if (rawPrices.length === 0) throw new Error('No prices extracted');
+
+  const prices = rawPrices.map(p => ({
+    type: p.type,
+    buy: formatVND(p.buy),
+    sell: formatVND(p.sell),
+  }));
+
+  return {
+    prices,
+    updatedAt: new Date().toISOString(),
+    source: "live",
+  };
+}
+
+// Background refresh - doesn't block the response
+function triggerBackgroundRefresh() {
+  if (fetchInProgress) return;
+  fetchInProgress = true;
+
+  fetchFromFirecrawl()
+    .then(data => {
+      cache = data;
+      cacheTimestamp = Date.now();
+      console.log(`Cache refreshed: ${data.prices.length} silver prices`);
+    })
+    .catch(err => {
+      console.error('Background refresh failed:', err);
+    })
+    .finally(() => {
+      fetchInProgress = false;
+    });
 }
 
 serve(async (req) => {
@@ -24,50 +124,34 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  try {
-    const response = await fetch("https://vangmlc.vn/includes/view/api_proxy.php", {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "application/json",
-        "Referer": "https://vangmlc.vn/",
-      },
+  const now = Date.now();
+  const cacheExpired = now - cacheTimestamp > CACHE_TTL;
+
+  // If cache is fresh, return immediately
+  if (cache && !cacheExpired) {
+    return new Response(JSON.stringify(cache), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  }
 
-    if (!response.ok) throw new Error(`API HTTP ${response.status}`);
-    const text = await response.text();
-    const apiData: ApiItem[] = JSON.parse(text);
+  // If cache exists but expired, return stale and refresh in background
+  if (cache && cacheExpired) {
+    triggerBackgroundRefresh();
+    return new Response(JSON.stringify(cache), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
-    // Build value map
-    const valueMap: Record<string, string> = {};
-    for (const item of apiData) {
-      const key = Object.keys(item)[0];
-      const val = Object.values(item)[0] as string;
-      valueMap[key] = val;
-    }
+  // No cache at all - must fetch synchronously (first request)
+  try {
+    const data = await fetchFromFirecrawl();
+    cache = data;
+    cacheTimestamp = Date.now();
+    fetchInProgress = false;
 
-    // Row 4 = Bạc (silver)
-    const buyRaw = valueMap["r4c1"] || "0";
-    const sellRaw = valueMap["r4c2"] || "0";
-
-    const prices = [
-      {
-        type: "Bạc 999",
-        buy: formatPrice(buyRaw),
-        sell: formatPrice(sellRaw),
-        unit: "nghìn đồng/chỉ",
-      },
-    ];
-
-    console.log(`Fetched silver price: buy=${buyRaw}, sell=${sellRaw}`);
-
-    return new Response(
-      JSON.stringify({
-        prices,
-        updatedAt: new Date().toISOString(),
-        source: "live",
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify(data), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (error) {
     console.error("Error fetching silver prices:", error);
     return new Response(
