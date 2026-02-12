@@ -68,7 +68,6 @@ serve(async (req) => {
     }
 
     const prices = ROW_CONFIG
-      .filter(cfg => cfg.category !== "Bạc") // Exclude silver from gold prices
       .map(cfg => {
         let buyRaw = valueMap[`r${cfg.row}c1`] || "0";
         const sellRaw = valueMap[`r${cfg.row}c2`] || "0";
@@ -100,7 +99,7 @@ serve(async (req) => {
     console.error("Error fetching gold prices:", error);
     return new Response(
       JSON.stringify({
-        prices: FALLBACK_PRICES.filter(p => p.category !== "Bạc"),
+        prices: FALLBACK_PRICES,
         updatedAt: new Date().toISOString(),
         source: "reference",
       }),
