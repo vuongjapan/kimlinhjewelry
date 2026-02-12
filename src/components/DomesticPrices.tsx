@@ -81,7 +81,7 @@ const DomesticPrices = () => {
           <Tabs defaultValue="gold" className="w-full">
             <div className="px-4 md:px-6 pt-4">
               <TabsList className="w-full">
-                <TabsTrigger value="gold" className="flex-1 font-body">Giá Vàng</TabsTrigger>
+                <TabsTrigger value="gold" className="flex-1 font-body">Giá Vàng Bạc tại Kim Linh Jewelry</TabsTrigger>
                 <TabsTrigger value="silver" className="flex-1 font-body">Giá Bạc</TabsTrigger>
               </TabsList>
             </div>
