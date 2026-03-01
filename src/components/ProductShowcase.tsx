@@ -1,20 +1,12 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { useGoldPrices, GoldPrice } from '@/hooks/useGoldPrices';
+import { useProducts, getCategoryLabel, type Product, type ProductCategory } from '@/hooks/useProducts';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-const products = [
-  { id: 1, name: 'Nhẫn vàng tây 18K – Mẫu trơn cổ điển', weight: 1.5, karat: '18K', desc: 'Thiết kế tinh giản, phù hợp đeo hàng ngày' },
-  { id: 2, name: 'Dây chuyền vàng tây 14K – Mắt xích nhỏ', weight: 2.0, karat: '14K', desc: 'Tinh tế, thanh lịch, phù hợp mọi trang phục' },
-  { id: 3, name: 'Lắc tay vàng tây 18K – Bi tròn', weight: 1.2, karat: '18K', desc: 'Phong cách hiện đại, trẻ trung' },
-  { id: 4, name: 'Bông tai vàng tây 14K – Giọt nước', weight: 0.8, karat: '14K', desc: 'Nữ tính, nhẹ nhàng theo phong cách Nhật' },
-  { id: 5, name: 'Nhẫn cưới vàng tây 18K – Đôi', weight: 3.0, karat: '18K', desc: 'Cặp nhẫn cưới truyền thống, sang trọng' },
-  { id: 6, name: 'Mặt dây chuyền 18K – Hoa sen', weight: 0.5, karat: '18K', desc: 'Biểu tượng thuần khiết, may mắn' },
-];
+const categories: ProductCategory[] = ['vang_18k', 'vang_14k', 'vang_10k', 'bac'];
 
 function getGoldSellPrice(prices: GoldPrice[], karat: string): number | null {
-  // Map karat to price types from vangmlc.vn
-  // The API returns: Nhẫn Ép Vỉ 9999 (vàng ta), Trang Sức Vàng, Vàng Tây 10K
-  // Prices are in nghìn đồng/chỉ (e.g., "16.500" = 16,500 nghìn đồng)
   const karatMap: Record<string, string[]> = {
     '18K': ['Trang Sức', '18K', '18k', '750'],
     '14K': ['Trang Sức', '14K', '14k', '585'],
@@ -36,11 +28,15 @@ function formatPrice(price: number): string {
 }
 
 const ProductShowcase = () => {
-  const [selectedProduct, setSelectedProduct] = useState<(typeof products)[0] | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const { data } = useGoldPrices();
   const goldPrices = data?.prices || [];
 
-  const getProductPrice = (product: (typeof products)[0]) => {
+  const getProductPrice = (product: Product) => {
+    if (product.price && product.price_type === 'fixed') {
+      return new Intl.NumberFormat('vi-VN').format(product.price) + 'đ';
+    }
+    if (!product.karat || !product.weight) return 'Liên hệ';
     const sellPrice = getGoldSellPrice(goldPrices, product.karat);
     if (!sellPrice) return 'Liên hệ';
     return formatPrice(sellPrice * product.weight);
@@ -50,7 +46,7 @@ const ProductShowcase = () => {
     <section id="san-pham" className="section-padding">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-10">
-          <p className="text-sm tracking-[0.2em] uppercase text-muted-foreground mb-2 font-body">Vàng tây theo mẫu</p>
+          <p className="text-sm tracking-[0.2em] uppercase text-muted-foreground mb-2 font-body">Bộ sưu tập</p>
           <h2 className="text-3xl md:text-4xl font-display font-semibold gold-text">
             Sản Phẩm Nổi Bật
           </h2>
@@ -59,25 +55,19 @@ const ProductShowcase = () => {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {products.map((product) => (
-            <div
-              key={product.id}
-              onClick={() => setSelectedProduct(product)}
-              className="glass-card p-5 cursor-pointer hover:shadow-md transition-all duration-300 group"
-            >
-              <div className="aspect-square bg-secondary/50 rounded-md mb-4 flex items-center justify-center overflow-hidden">
-                <div className="w-16 h-16 rounded-full gold-gradient opacity-30 group-hover:opacity-50 transition-opacity" />
-              </div>
-              <h3 className="font-display font-semibold text-foreground text-base mb-1">{product.name}</h3>
-              <p className="text-sm text-muted-foreground font-body mb-2">{product.desc}</p>
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-muted-foreground font-body">{product.weight} chỉ • {product.karat}</span>
-                <span className="font-body font-semibold text-primary text-sm">{getProductPrice(product)}</span>
-              </div>
-            </div>
+        <Tabs defaultValue="vang_18k" className="w-full">
+          <TabsList className="w-full max-w-xl mx-auto grid grid-cols-4 mb-6">
+            {categories.map(cat => (
+              <TabsTrigger key={cat} value={cat} className="font-body text-xs sm:text-sm">{getCategoryLabel(cat)}</TabsTrigger>
+            ))}
+          </TabsList>
+
+          {categories.map(cat => (
+            <TabsContent key={cat} value={cat}>
+              <CategoryProducts category={cat} onSelect={setSelectedProduct} getPrice={getProductPrice} />
+            </TabsContent>
           ))}
-        </div>
+        </Tabs>
 
         <p className="text-xs text-muted-foreground text-center mt-6 font-body">
           Giá tham khảo = giá vàng hiện tại × trọng lượng • Liên hệ cửa hàng để chốt giá chính xác
@@ -89,22 +79,22 @@ const ProductShowcase = () => {
               <button onClick={() => setSelectedProduct(null)} className="absolute top-3 right-3 text-muted-foreground hover:text-foreground">
                 <X className="w-5 h-5" />
               </button>
-              <div className="aspect-square bg-secondary/50 rounded-md mb-4 flex items-center justify-center">
-                <div className="w-24 h-24 rounded-full gold-gradient opacity-40" />
+              <div className="aspect-square bg-secondary/50 rounded-md mb-4 flex items-center justify-center overflow-hidden">
+                {selectedProduct.image_url ? (
+                  <img src={selectedProduct.image_url} alt={selectedProduct.name} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-24 h-24 rounded-full gold-gradient opacity-40" />
+                )}
               </div>
               <h3 className="font-display font-semibold text-xl mb-2 text-foreground">{selectedProduct.name}</h3>
-              <p className="text-muted-foreground font-body mb-3">{selectedProduct.desc}</p>
+              <p className="text-muted-foreground font-body mb-3">{selectedProduct.description}</p>
               <div className="flex justify-between items-center border-t border-border pt-3">
                 <span className="text-sm text-muted-foreground font-body">{selectedProduct.weight} chỉ • {selectedProduct.karat}</span>
                 <span className="font-display font-bold text-lg text-primary">{getProductPrice(selectedProduct)}</span>
               </div>
               <p className="text-xs text-muted-foreground font-body mt-2">Giá tham khảo, liên hệ cửa hàng để chốt giá chính xác</p>
-              <a
-                href="https://zalo.me/0986617939"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-4 block w-full text-center py-3 rounded-md bg-primary text-primary-foreground font-body font-medium hover:bg-primary/90 transition-colors"
-              >
+              <a href="https://zalo.me/0986617939" target="_blank" rel="noopener noreferrer"
+                className="mt-4 block w-full text-center py-3 rounded-md bg-primary text-primary-foreground font-body font-medium hover:bg-primary/90 transition-colors">
                 Liên hệ tư vấn
               </a>
             </div>
@@ -112,6 +102,36 @@ const ProductShowcase = () => {
         )}
       </div>
     </section>
+  );
+};
+
+const CategoryProducts = ({ category, onSelect, getPrice }: { category: ProductCategory; onSelect: (p: Product) => void; getPrice: (p: Product) => string }) => {
+  const { data: products, isLoading } = useProducts(category);
+
+  if (isLoading) return <div className="text-center py-8 text-muted-foreground text-sm">Đang tải...</div>;
+  if (!products?.length) return <div className="text-center py-8 text-muted-foreground text-sm">Chưa có sản phẩm</div>;
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+      {products.map((product) => (
+        <div key={product.id} onClick={() => onSelect(product)}
+          className="glass-card p-5 cursor-pointer hover:shadow-md transition-all duration-300 group">
+          <div className="aspect-square bg-secondary/50 rounded-md mb-4 flex items-center justify-center overflow-hidden">
+            {product.image_url ? (
+              <img src={product.image_url} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+            ) : (
+              <div className="w-16 h-16 rounded-full gold-gradient opacity-30 group-hover:opacity-50 transition-opacity" />
+            )}
+          </div>
+          <h3 className="font-display font-semibold text-foreground text-base mb-1">{product.name}</h3>
+          <p className="text-sm text-muted-foreground font-body mb-2">{product.description}</p>
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-muted-foreground font-body">{product.weight} chỉ • {product.karat}</span>
+            <span className="font-body font-semibold text-primary text-sm">{getPrice(product)}</span>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 };
 
