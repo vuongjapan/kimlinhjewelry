@@ -62,6 +62,42 @@ export type Database = {
         }
         Relationships: []
       }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+          phone: string | null
+          purchase_count: number
+          tier: Database["public"]["Enums"]["customer_tier"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          phone?: string | null
+          purchase_count?: number
+          tier?: Database["public"]["Enums"]["customer_tier"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          phone?: string | null
+          purchase_count?: number
+          tier?: Database["public"]["Enums"]["customer_tier"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           id: string
@@ -85,6 +121,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calculate_tier: {
+        Args: { p_count: number }
+        Returns: Database["public"]["Enums"]["customer_tier"]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -95,6 +135,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
+      customer_tier: "thuong" | "vip" | "sieu_vip"
       product_category: "vang_10k" | "vang_14k" | "vang_18k" | "bac"
     }
     CompositeTypes: {
@@ -224,6 +265,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
+      customer_tier: ["thuong", "vip", "sieu_vip"],
       product_category: ["vang_10k", "vang_14k", "vang_18k", "bac"],
     },
   },
