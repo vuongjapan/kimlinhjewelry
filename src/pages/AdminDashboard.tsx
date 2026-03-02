@@ -2,13 +2,17 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdmin } from '@/hooks/useAdmin';
 import { useAllProducts, useUpdateProduct, useDeleteProduct, useCreateProduct, uploadProductImage, getCategoryLabel, type Product, type ProductCategory } from '@/hooks/useProducts';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { LogOut, Plus, Pencil, Trash2, Upload } from 'lucide-react';
+import { LogOut, Plus, Pencil, Trash2, Upload, Users, Package } from 'lucide-react';
+import { getTierLabel, getTierColor, type Profile } from '@/hooks/useAuth';
+import { cn } from '@/lib/utils';
 
 const categories: ProductCategory[] = ['vang_18k', 'vang_14k', 'vang_10k', 'bac'];
 
@@ -29,10 +33,25 @@ const AdminDashboard = () => {
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [newProduct, setNewProduct] = useState<Omit<Product, 'id'> | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [activeSection, setActiveSection] = useState<'products' | 'customers'>('products');
+  const [customers, setCustomers] = useState<Profile[]>([]);
+  const [loadingCustomers, setLoadingCustomers] = useState(false);
+  const [editCustomer, setEditCustomer] = useState<Profile | null>(null);
 
   useEffect(() => {
     if (!authLoading && !isAdmin) navigate('/admin/login');
   }, [authLoading, isAdmin, navigate]);
+
+  const fetchCustomers = async () => {
+    setLoadingCustomers(true);
+    const { data } = await supabase.from('profiles').select('*').order('purchase_count', { ascending: false });
+    setCustomers((data as Profile[]) || []);
+    setLoadingCustomers(false);
+  };
+
+  useEffect(() => {
+    if (activeSection === 'customers' && isAdmin) fetchCustomers();
+  }, [activeSection, isAdmin]);
 
   if (authLoading || isLoading) {
     return <div className="min-h-screen flex items-center justify-center bg-background"><p className="text-muted-foreground">Đang tải...</p></div>;
@@ -84,6 +103,23 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleUpdateCustomer = async () => {
+    if (!editCustomer) return;
+    try {
+      const { error } = await supabase.from('profiles').update({
+        purchase_count: editCustomer.purchase_count,
+        full_name: editCustomer.full_name,
+        phone: editCustomer.phone,
+      }).eq('id', editCustomer.id);
+      if (error) throw error;
+      toast({ title: 'Đã cập nhật khách hàng' });
+      setEditCustomer(null);
+      fetchCustomers();
+    } catch (err: any) {
+      toast({ title: 'Lỗi', description: err.message, variant: 'destructive' });
+    }
+  };
+
   const productsByCategory = (cat: ProductCategory) =>
     products?.filter((p) => p.category === cat) || [];
 
@@ -91,8 +127,14 @@ const AdminDashboard = () => {
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border/50">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <h1 className="font-display font-semibold text-lg gold-text">Admin – Quản lý sản phẩm</h1>
+          <h1 className="font-display font-semibold text-lg gold-text">Admin Dashboard</h1>
           <div className="flex gap-2">
+            <Button variant={activeSection === 'products' ? 'default' : 'outline'} size="sm" onClick={() => setActiveSection('products')}>
+              <Package className="w-4 h-4 mr-1" />Sản phẩm
+            </Button>
+            <Button variant={activeSection === 'customers' ? 'default' : 'outline'} size="sm" onClick={() => setActiveSection('customers')}>
+              <Users className="w-4 h-4 mr-1" />Khách hàng
+            </Button>
             <Button variant="outline" size="sm" onClick={() => navigate('/')}>Trang chủ</Button>
             <Button variant="ghost" size="sm" onClick={signOut}><LogOut className="w-4 h-4 mr-1" />Đăng xuất</Button>
           </div>
@@ -100,58 +142,88 @@ const AdminDashboard = () => {
       </header>
 
       <div className="max-w-6xl mx-auto px-4 py-6">
-        <Tabs defaultValue="vang_18k">
-          <TabsList className="mb-4">
+        {activeSection === 'products' ? (
+          <Tabs defaultValue="vang_18k">
+            <TabsList className="mb-4">
+              {categories.map(cat => (
+                <TabsTrigger key={cat} value={cat} className="font-body">{getCategoryLabel(cat)}</TabsTrigger>
+              ))}
+            </TabsList>
+
             {categories.map(cat => (
-              <TabsTrigger key={cat} value={cat} className="font-body">{getCategoryLabel(cat)}</TabsTrigger>
+              <TabsContent key={cat} value={cat}>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-display font-semibold">{getCategoryLabel(cat)}</h2>
+                  <Button size="sm" onClick={() => setNewProduct({ ...emptyProduct, category: cat, karat: cat === 'bac' ? 'Bạc 925' : cat.replace('vang_', '').toUpperCase() })}>
+                    <Plus className="w-4 h-4 mr-1" />Thêm
+                  </Button>
+                </div>
+
+                <div className="grid gap-3">
+                  {productsByCategory(cat).map(product => (
+                    <div key={product.id} className="glass-card p-4 flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-md overflow-hidden bg-secondary/50 flex-shrink-0">
+                        {product.image_url ? (
+                          <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <div className="w-8 h-8 rounded-full gold-gradient opacity-30" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-body font-semibold text-sm truncate">{product.name}</h3>
+                        <p className="text-xs text-muted-foreground">{product.weight} chỉ • {product.karat} • {product.price ? new Intl.NumberFormat('vi-VN').format(product.price) + 'đ' : 'Giá tự động'}</p>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => setEditProduct(product)}>
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(product.id)}>
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {productsByCategory(cat).length === 0 && (
+                    <p className="text-muted-foreground text-sm text-center py-8">Chưa có sản phẩm nào</p>
+                  )}
+                </div>
+              </TabsContent>
             ))}
-          </TabsList>
-
-          {categories.map(cat => (
-            <TabsContent key={cat} value={cat}>
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-display font-semibold">{getCategoryLabel(cat)}</h2>
-                <Button size="sm" onClick={() => setNewProduct({ ...emptyProduct, category: cat, karat: cat === 'bac' ? 'Bạc 925' : cat.replace('vang_', '').toUpperCase() })}>
-                  <Plus className="w-4 h-4 mr-1" />Thêm
-                </Button>
-              </div>
-
+          </Tabs>
+        ) : (
+          /* Customers Section */
+          <div>
+            <h2 className="text-xl font-display font-semibold mb-4">Quản lý khách hàng</h2>
+            {loadingCustomers ? (
+              <p className="text-muted-foreground text-center py-8">Đang tải...</p>
+            ) : (
               <div className="grid gap-3">
-                {productsByCategory(cat).map(product => (
-                  <div key={product.id} className="glass-card p-4 flex items-center gap-4">
-                    <div className="w-16 h-16 rounded-md overflow-hidden bg-secondary/50 flex-shrink-0">
-                      {product.image_url ? (
-                        <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <div className="w-8 h-8 rounded-full gold-gradient opacity-30" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-body font-semibold text-sm truncate">{product.name}</h3>
-                      <p className="text-xs text-muted-foreground">{product.weight} chỉ • {product.karat} • {product.price ? new Intl.NumberFormat('vi-VN').format(product.price) + 'đ' : 'Giá tự động'}</p>
-                    </div>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => setEditProduct(product)}>
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(product.id)}>
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </Button>
-                    </div>
+                <div className="glass-card p-3 grid grid-cols-[1fr_1fr_auto_auto_auto] gap-4 text-xs font-body font-semibold text-muted-foreground">
+                  <span>Tên</span><span>Email</span><span>Lần mua</span><span>Hạng</span><span></span>
+                </div>
+                {customers.map(c => (
+                  <div key={c.id} className="glass-card p-3 grid grid-cols-[1fr_1fr_auto_auto_auto] gap-4 items-center text-sm font-body">
+                    <span className="truncate">{c.full_name || '—'}</span>
+                    <span className="truncate text-muted-foreground">{c.email || '—'}</span>
+                    <span className="text-center font-medium">{c.purchase_count}</span>
+                    <Badge className={cn('text-[10px]', getTierColor(c.tier))}>{getTierLabel(c.tier)}</Badge>
+                    <Button variant="ghost" size="icon" onClick={() => setEditCustomer(c)}>
+                      <Pencil className="w-4 h-4" />
+                    </Button>
                   </div>
                 ))}
-                {productsByCategory(cat).length === 0 && (
-                  <p className="text-muted-foreground text-sm text-center py-8">Chưa có sản phẩm nào</p>
+                {customers.length === 0 && (
+                  <p className="text-muted-foreground text-sm text-center py-8">Chưa có khách hàng nào</p>
                 )}
               </div>
-            </TabsContent>
-          ))}
-        </Tabs>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Edit Dialog */}
+      {/* Edit Product Dialog */}
       <Dialog open={!!editProduct} onOpenChange={(open) => !open && setEditProduct(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Chỉnh sửa sản phẩm</DialogTitle></DialogHeader>
@@ -220,7 +292,7 @@ const AdminDashboard = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Create Dialog */}
+      {/* Create Product Dialog */}
       <Dialog open={!!newProduct} onOpenChange={(open) => !open && setNewProduct(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Thêm sản phẩm mới</DialogTitle></DialogHeader>
@@ -252,6 +324,36 @@ const AdminDashboard = () => {
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" onClick={() => setNewProduct(null)}>Hủy</Button>
                 <Button onClick={handleCreate} disabled={createProduct.isPending}>Tạo</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Customer Dialog */}
+      <Dialog open={!!editCustomer} onOpenChange={(open) => !open && setEditCustomer(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Chỉnh sửa khách hàng</DialogTitle></DialogHeader>
+          {editCustomer && (
+            <div className="space-y-4">
+              <div>
+                <Label className="font-body text-xs">Họ tên</Label>
+                <Input value={editCustomer.full_name || ''} onChange={(e) => setEditCustomer({ ...editCustomer, full_name: e.target.value })} />
+              </div>
+              <div>
+                <Label className="font-body text-xs">Số điện thoại</Label>
+                <Input value={editCustomer.phone || ''} onChange={(e) => setEditCustomer({ ...editCustomer, phone: e.target.value })} />
+              </div>
+              <div>
+                <Label className="font-body text-xs">Số lần mua hàng</Label>
+                <Input type="number" min={0} value={editCustomer.purchase_count} onChange={(e) => setEditCustomer({ ...editCustomer, purchase_count: parseInt(e.target.value) || 0 })} />
+              </div>
+              <p className="text-xs text-muted-foreground font-body">
+                Hạng sẽ tự động cập nhật: 0–2 → Thành viên, 3–9 → VIP, ≥10 → Siêu VIP
+              </p>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setEditCustomer(null)}>Hủy</Button>
+                <Button onClick={handleUpdateCustomer}>Lưu</Button>
               </div>
             </div>
           )}
