@@ -1,4 +1,5 @@
 import { MapPin, Clock, Phone, Mail, Facebook } from 'lucide-react';
+import StoreMap from './StoreMap';
 
 const ContactSection = () => {
   return (
@@ -86,6 +87,10 @@ const ContactSection = () => {
                 Gửi Email
               </a>
             </div>
+          </div>
+
+          <div className="mt-6">
+            <StoreMap />
           </div>
         </div>
       </div>
