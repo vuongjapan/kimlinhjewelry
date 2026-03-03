@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
-import { MessageCircle, X, Send, Loader2 } from 'lucide-react';
+import { MessageCircle, X, Send, Loader2, Minimize2 } from 'lucide-react';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
+const CURRENT_DATE = '03/03/2026';
 
 async function streamChat({
   messages,
@@ -59,7 +60,6 @@ async function streamChat({
     }
   }
 
-  // Flush remaining
   if (buffer.trim()) {
     for (let raw of buffer.split('\n')) {
       if (!raw) continue;
@@ -84,7 +84,7 @@ const AIChatWidget = () => {
   const [messages, setMessages] = useState<Msg[]>([
     {
       role: 'assistant',
-      content: 'Xin chào quý khách! Tôi là trợ lý tư vấn của Kim Linh Jewelry 🏮\n\nTôi có thể hỗ trợ quý khách về:\n• Giá vàng, giá bạc hiện tại\n• Sản phẩm vàng tây theo mẫu\n• Kiến thức đầu tư vàng\n\nXin mời quý khách đặt câu hỏi ạ 🙏',
+      content: `Xin chào quý khách! Tôi là trợ lý tư vấn của Kim Linh Jewelry 🏮\n\nTôi có thể hỗ trợ quý khách về:\n• Giá vàng, giá bạc hôm nay (${CURRENT_DATE})\n• Sản phẩm vàng tây theo mẫu\n• Kiến thức đầu tư vàng\n\nXin mời quý khách đặt câu hỏi ạ 🙏`,
     },
   ]);
   const [input, setInput] = useState('');
@@ -135,6 +135,7 @@ const AIChatWidget = () => {
 
   return (
     <>
+      {/* Floating toggle button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="fixed bottom-4 right-4 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg animate-pulse-gold hover:scale-110 transition-transform"
@@ -143,13 +144,27 @@ const AIChatWidget = () => {
         {isOpen ? <X className="w-6 h-6" /> : <MessageCircle className="w-6 h-6" />}
       </button>
 
+      {/* Chat panel */}
       {isOpen && (
         <div className="fixed bottom-20 right-4 z-50 w-[340px] max-w-[calc(100vw-2rem)] h-[460px] max-h-[70vh] bg-card border border-border rounded-lg shadow-xl flex flex-col overflow-hidden">
-          <div className="px-4 py-3 border-b border-border bg-primary/5">
-            <p className="font-display font-semibold text-foreground text-sm">🏮 Tư vấn Kim Linh</p>
-            <p className="text-xs text-muted-foreground font-body">Phong cách Nhật – Tận tâm tư vấn</p>
+          {/* Header */}
+          <div className="px-4 py-3 border-b border-border bg-primary/5 flex items-center justify-between">
+            <div>
+              <p className="font-display font-semibold text-foreground text-sm">🏮 Tư vấn Kim Linh</p>
+              <p className="text-[10px] text-muted-foreground font-body">
+                AI tư vấn giá vàng – cập nhật {CURRENT_DATE}
+              </p>
+            </div>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="p-1 rounded hover:bg-secondary transition-colors"
+              aria-label="Thu gọn chat"
+            >
+              <Minimize2 className="w-4 h-4 text-muted-foreground" />
+            </button>
           </div>
 
+          {/* Messages */}
           <div className="flex-1 overflow-y-auto p-3 space-y-3">
             {messages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -175,6 +190,7 @@ const AIChatWidget = () => {
             <div ref={messagesEndRef} />
           </div>
 
+          {/* Input */}
           <div className="p-3 border-t border-border">
             <div className="flex gap-2">
               <input
