@@ -6,113 +6,105 @@ const corsHeaders = {
 };
 
 const CURRENT_DATE = "03/03/2026";
+const CACHE_TTL = 90_000; // 90 seconds
 
-const SYSTEM_PROMPT = `Bạn là trợ lý tư vấn của tiệm vàng Kim Linh Jewelry – một tiệm vàng gia đình uy tín tại Sầm Sơn, Thanh Hóa.
-Ngày hôm nay là: ${CURRENT_DATE}.
+// In-memory price cache
+let goldCache: { data: string; ts: number } | null = null;
+let silverCache: { data: string; ts: number } | null = null;
 
-PHONG CÁCH NHẬT BẢN:
-- Lịch sự, nhẹ nhàng, tinh tế, chuyên nghiệp
-- Mở đầu bằng: "Dạ, em xin phép chia sẻ…" hoặc "Theo cập nhật hôm nay ${CURRENT_DATE}…"
-- Kết thúc bằng: "Rất cảm ơn anh/chị đã quan tâm ạ."
-- Xưng "em" và gọi khách là "anh/chị"
-- Không dùng giọng bán hàng ép buộc
-- Không phóng đại lợi nhuận
-- Không đưa lời khuyên tài chính mang tính cam kết
+const SYSTEM_PROMPT = `Bạn là trợ lý tư vấn của tiệm vàng Kim Linh Jewelry – tiệm vàng gia đình uy tín tại Sầm Sơn, Thanh Hóa.
+Ngày hôm nay: ${CURRENT_DATE}.
 
-KIẾN THỨC & CHỨC NĂNG:
+PHONG CÁCH:
+- Lịch sự, nhẹ nhàng, chuyên nghiệp. Xưng "em", gọi khách "anh/chị".
+- Mở đầu: "Dạ, em xin phép chia sẻ…" hoặc "Theo cập nhật hôm nay…"
+- Kết thúc: "Rất cảm ơn anh/chị đã quan tâm ạ."
+- Không bán hàng ép buộc, không phóng đại lợi nhuận, không cam kết tài chính.
+
+QUAN TRỌNG VỀ FORMAT:
+- Trả lời NGẮN GỌN, súc tích, tối đa 150 từ.
+- CHỈ ghi ngày 1 lần duy nhất ở đầu câu trả lời.
+- Không lặp lại thông tin, không nhắc lại địa chỉ/hotline nếu không được hỏi.
+- Dùng bullet points ngắn cho bảng giá.
+
+CHỨC NĂNG:
 - Giá vàng trong nước (SJC, 24K/9999, 18K, 14K, 10K), giá vàng thế giới XAU/USD
 - Giá bạc trong nước
-- Sản phẩm vàng tây theo mẫu: nhẫn, dây chuyền, lắc tay, bông tai, nhẫn cưới
-- Cách tính giá sản phẩm = giá vàng × trọng lượng (chỉ)
+- Sản phẩm vàng tây: nhẫn, dây chuyền, lắc tay, bông tai, nhẫn cưới
+- Cách tính giá = giá vàng × trọng lượng (chỉ)
 - Kiến thức đầu tư vàng cơ bản
 
-LOGIC TƯ VẤN:
-- Khi khách hỏi "giá vàng hôm nay": liệt kê các loại vàng chính với giá mua/bán từ DỮ LIỆU GIÁ bên dưới. Nếu có biến động, ghi tăng/giảm.
-- Khi khách hỏi "giá vàng tây": trích giá Vàng Tây 10K từ dữ liệu.
-- Khi khách hỏi "giá vàng 9999": trích giá Nhẫn Ép Vỉ 9999 từ dữ liệu.
-- Khi khách hỏi "giá bạc": liệt kê giá bạc từ dữ liệu.
-- Khi khách hỏi "giá vàng thế giới": trả lời từ dữ liệu XAU/USD nếu có.
-- Khi khách nói "mua vàng làm quà": gợi ý vàng tây nhẹ, mẫu đẹp.
-- Khi khách nói "đầu tư": giải thích ngắn gọn ưu/nhược điểm, nhắc thông tin chỉ mang tính tham khảo.
-- Luôn ghi rõ "Theo dữ liệu cập nhật ngày ${CURRENT_DATE}" khi trả lời về giá.
+LOGIC:
+- "giá vàng hôm nay" → liệt kê ngắn gọn các loại vàng chính
+- "giá vàng tây" → trích giá Vàng Tây 10K
+- "giá vàng 9999" → trích giá Nhẫn Ép Vỉ 9999
+- "giá bạc" → liệt kê giá bạc
+- "mua vàng làm quà" → gợi ý vàng tây nhẹ
+- "đầu tư" → ưu/nhược điểm ngắn gọn, nhắc tham khảo
+- Ngoài phạm vi → "Dạ, câu hỏi này nằm ngoài phạm vi hỗ trợ của em ạ."
 
-QUY TẮC BẮT BUỘC:
-1. Luôn nhắc khách liên hệ trực tiếp cửa hàng để chốt giá chính xác: Hotline/Zalo 098 661 7939
-2. Giá trên website chỉ mang tính tham khảo
-3. Không đưa ra lời khuyên đầu tư cụ thể, chỉ chia sẻ kiến thức chung
-4. Địa chỉ: Số 50 Nguyễn Thị Minh Khai, phường Trường Sơn, Sầm Sơn, Thanh Hóa (đối diện cổng phía Tây chợ Cột Đỏ)
-5. Giờ làm việc: T2–CN, 8:00–17:00
-6. Nếu câu hỏi ngoài phạm vi vàng/bạc/sản phẩm → trả lời lịch sự: "Dạ, câu hỏi này nằm ngoài phạm vi hỗ trợ của em. Em chỉ có thể tư vấn về vàng, bạc và sản phẩm của Kim Linh Jewelry ạ."
-7. Không lưu thông tin cá nhân, không yêu cầu thông tin nhạy cảm
+QUY TẮC:
+1. Hotline/Zalo: 098 661 7939
+2. Giá chỉ mang tính tham khảo
+3. Địa chỉ: Số 50 Nguyễn Thị Minh Khai, phường Trường Sơn, Sầm Sơn, Thanh Hóa
+4. Giờ làm việc: T2–CN, 8:00–17:00
+5. Không lưu/yêu cầu thông tin cá nhân`;
 
-AN TOÀN:
-- Không lưu thông tin cá nhân khách hàng
-- Không yêu cầu số CMND, số tài khoản hay thông tin nhạy cảm
-
-Trả lời ngắn gọn, dễ hiểu, thân thiện. Dùng emoji phù hợp. Kết thúc bằng gợi ý hoặc câu hỏi để tiếp tục cuộc trò chuyện.`;
-
-// Fetch live gold prices from vangmlc.vn API
 async function fetchGoldPrices(): Promise<string> {
+  const now = Date.now();
+  if (goldCache && now - goldCache.ts < CACHE_TTL) return goldCache.data;
+
   try {
     const response = await fetch("https://vangmlc.vn/includes/view/api_proxy.php", {
-      headers: {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "application/json",
-        "Referer": "https://vangmlc.vn/",
-      },
+      headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json", Referer: "https://vangmlc.vn/" },
     });
     if (!response.ok) throw new Error("API error");
     const data = await response.json();
-    
+
     const valueMap: Record<string, string> = {};
     for (const item of data) {
       const key = Object.keys(item)[0];
       valueMap[key] = Object.values(item)[0] as string;
     }
 
-    const formatPrice = (raw: string) => {
-      const num = parseInt(raw, 10);
-      return isNaN(num) ? raw : num.toLocaleString("vi-VN");
-    };
-
-    const adjustBuy = (raw: string, adj: number) => {
-      const num = parseInt(raw, 10);
-      return isNaN(num) ? raw : String(num + adj);
-    };
+    const fmt = (raw: string) => { const n = parseInt(raw, 10); return isNaN(n) ? raw : n.toLocaleString("vi-VN"); };
+    const adj = (raw: string, a: number) => { const n = parseInt(raw, 10); return isNaN(n) ? raw : String(n + a); };
 
     const rows = [
-      { row: 1, name: "Nhẫn Ép Vỉ 9999 (Vàng 24K)", category: "Vàng ta" },
-      { row: 2, name: "Trang Sức Vàng (18K/14K)", category: "Trang sức" },
-      { row: 3, name: "Vàng Tây 10K", category: "Vàng tây", buyAdj: -300 },
-      { row: 4, name: "Bạc", category: "Bạc" },
+      { row: 1, name: "Nhẫn Ép Vỉ 9999 (24K)", cat: "Vàng ta" },
+      { row: 2, name: "Trang Sức Vàng (18K/14K)", cat: "Trang sức" },
+      { row: 3, name: "Vàng Tây 10K", cat: "Vàng tây", buyAdj: -300 },
+      { row: 4, name: "Bạc", cat: "Bạc" },
     ];
 
     let result = "GIÁ VÀNG TRONG NƯỚC (nghìn đồng/chỉ):\n";
     for (const r of rows) {
       let buyRaw = valueMap[`r${r.row}c1`] || "0";
       const sellRaw = valueMap[`r${r.row}c2`] || "0";
-      if (r.buyAdj) buyRaw = adjustBuy(buyRaw, r.buyAdj);
-      result += `- ${r.name}: Mua ${formatPrice(buyRaw)} | Bán ${formatPrice(sellRaw)}\n`;
+      if (r.buyAdj) buyRaw = adj(buyRaw, r.buyAdj);
+      result += `- ${r.name}: Mua ${fmt(buyRaw)} | Bán ${fmt(sellRaw)}\n`;
     }
+
+    goldCache = { data: result, ts: now };
     return result;
   } catch (e) {
     console.error("Gold price fetch error:", e);
-    return "GIÁ VÀNG TRONG NƯỚC: Tạm thời không lấy được dữ liệu. Vui lòng nhắc khách liên hệ cửa hàng.\n";
+    if (goldCache) return goldCache.data + "(dữ liệu cache)\n";
+    return "GIÁ VÀNG: Tạm thời không lấy được dữ liệu.\n";
   }
 }
 
-// Fetch silver prices via Firecrawl
 async function fetchSilverPrices(): Promise<string> {
+  const now = Date.now();
+  if (silverCache && now - silverCache.ts < CACHE_TTL) return silverCache.data;
+
   try {
     const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
     if (!apiKey) return "GIÁ BẠC: Không có dữ liệu.\n";
 
     const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         url: "https://cafef.vn/du-lieu/gia-bac-hom-nay/trong-nuoc.chn",
         formats: ['extract'],
@@ -125,11 +117,7 @@ async function fetchSilverPrices(): Promise<string> {
                 type: 'array',
                 items: {
                   type: 'object',
-                  properties: {
-                    type: { type: 'string' },
-                    buy: { type: 'string' },
-                    sell: { type: 'string' },
-                  },
+                  properties: { type: { type: 'string' }, buy: { type: 'string' }, sell: { type: 'string' } },
                   required: ['type', 'buy', 'sell'],
                 },
               },
@@ -144,16 +132,18 @@ async function fetchSilverPrices(): Promise<string> {
     if (!response.ok) throw new Error("Firecrawl error");
     const result = await response.json();
     const prices = result.data?.extract?.silverPrices || result.extract?.silverPrices || [];
-    
     if (prices.length === 0) return "GIÁ BẠC: Tạm thời không lấy được dữ liệu.\n";
 
     let text = "GIÁ BẠC TRONG NƯỚC (VNĐ/lượng):\n";
     for (const p of prices.slice(0, 5)) {
       text += `- ${p.type}: Mua ${p.buy} | Bán ${p.sell}\n`;
     }
+
+    silverCache = { data: text, ts: now };
     return text;
   } catch (e) {
     console.error("Silver price fetch error:", e);
+    if (silverCache) return silverCache.data + "(dữ liệu cache)\n";
     return "GIÁ BẠC: Tạm thời không lấy được dữ liệu.\n";
   }
 }
@@ -166,13 +156,10 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    // Fetch live prices in parallel
-    const [goldData, silverData] = await Promise.all([
-      fetchGoldPrices(),
-      fetchSilverPrices(),
-    ]);
+    // Fetch prices in parallel (uses cache if fresh)
+    const [goldData, silverData] = await Promise.all([fetchGoldPrices(), fetchSilverPrices()]);
 
-    const priceContext = `\n\n--- DỮ LIỆU GIÁ CẬP NHẬT NGÀY ${CURRENT_DATE} ---\n${goldData}\n${silverData}\nLưu ý: Giá chỉ mang tính tham khảo. Luôn nhắc khách liên hệ cửa hàng để xác nhận giá chính xác.\n---`;
+    const priceContext = `\n\n--- DỮ LIỆU GIÁ CẬP NHẬT NGÀY ${CURRENT_DATE} ---\n${goldData}\n${silverData}Lưu ý: Giá chỉ mang tính tham khảo.\n---`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -181,7 +168,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-flash-lite",
         messages: [
           { role: "system", content: SYSTEM_PROMPT + priceContext },
           ...messages,
@@ -191,34 +178,17 @@ serve(async (req) => {
     });
 
     if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Hệ thống đang bận, vui lòng thử lại sau." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Dịch vụ tạm ngưng, vui lòng liên hệ cửa hàng." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+      const status = response.status;
+      if (status === 429) return new Response(JSON.stringify({ error: "Hệ thống đang bận, vui lòng thử lại sau." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (status === 402) return new Response(JSON.stringify({ error: "Dịch vụ tạm ngưng." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       const t = await response.text();
-      console.error("AI gateway error:", response.status, t);
-      return new Response(JSON.stringify({ error: "Lỗi hệ thống" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error("AI gateway error:", status, t);
+      return new Response(JSON.stringify({ error: "Lỗi hệ thống" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    return new Response(response.body, {
-      headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
-    });
+    return new Response(response.body, { headers: { ...corsHeaders, "Content-Type": "text/event-stream" } });
   } catch (e) {
     console.error("chat error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Lỗi không xác định" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Lỗi không xác định" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

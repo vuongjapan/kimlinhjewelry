@@ -1,180 +1,240 @@
-import { useState, useRef, useEffect } from 'react';
-import { MessageCircle, X, Send, Loader2, Minimize2 } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { MessageCircle, X, Send, Loader2, Minimize2, Wifi, WifiOff } from 'lucide-react';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
+const GOLD_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-gold-prices`;
+const SILVER_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-silver-prices`;
+const AUTH_HEADER = { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` };
 const CURRENT_DATE = '03/03/2026';
+const CACHE_TTL = 90_000;
 
-async function streamChat({
-  messages,
-  onDelta,
-  onDone,
-  onError,
-}: {
-  messages: Msg[];
-  onDelta: (text: string) => void;
-  onDone: () => void;
-  onError: (err: string) => void;
-}) {
+// ---------- Price cache ----------
+interface PriceCache {
+  gold: { data: any; ts: number } | null;
+  silver: { data: any; ts: number } | null;
+}
+const priceCache: PriceCache = { gold: null, silver: null };
+
+async function fetchCached(url: string, key: 'gold' | 'silver') {
+  const now = Date.now();
+  const cached = priceCache[key];
+  if (cached && now - cached.ts < CACHE_TTL) return cached.data;
+  try {
+    const r = await fetch(url, { headers: AUTH_HEADER });
+    if (!r.ok) throw new Error();
+    const data = await r.json();
+    priceCache[key] = { data, ts: Date.now() };
+    return data;
+  } catch {
+    return cached?.data ?? null;
+  }
+}
+
+// Preload on module init (non-blocking)
+fetchCached(GOLD_URL, 'gold');
+fetchCached(SILVER_URL, 'silver');
+
+// ---------- Local keyword router ----------
+function tryLocalAnswer(): string | null {
+  const gold = priceCache.gold?.data;
+  if (!gold?.prices) return null;
+  return null; // all queries go to AI for now, but cache is warm
+}
+
+function formatLocalPrices(keyword: string): string | null {
+  const gold = priceCache.gold?.data;
+  if (!gold?.prices) return null;
+
+  const kw = keyword.toLowerCase();
+  const prices = gold.prices as Array<{ type: string; buy: string; sell: string; category: string }>;
+
+  if (kw.includes('vàng tây') || kw.includes('10k')) {
+    const p = prices.find(p => p.type.includes('10K') || p.type.includes('Tây'));
+    if (p) return `Theo cập nhật ${CURRENT_DATE}:\n• ${p.type}: Mua ${p.buy} | Bán ${p.sell} (nghìn đồng/chỉ)\n\n⚡ Giá tham khảo – liên hệ 098 661 7939 để chốt giá chính xác ạ.`;
+  }
+
+  if (kw.includes('9999') || kw.includes('24k')) {
+    const p = prices.find(p => p.type.includes('9999'));
+    if (p) return `Theo cập nhật ${CURRENT_DATE}:\n• ${p.type}: Mua ${p.buy} | Bán ${p.sell} (nghìn đồng/chỉ)\n\n⚡ Giá tham khảo – liên hệ 098 661 7939 để chốt giá chính xác ạ.`;
+  }
+
+  if (kw.includes('liên hệ') || kw.includes('địa chỉ') || kw.includes('hotline')) {
+    return `📍 Số 50 Nguyễn Thị Minh Khai, P. Trường Sơn, Sầm Sơn, Thanh Hóa\n📞 Hotline/Zalo: 098 661 7939\n🕗 T2–CN, 8:00–17:00`;
+  }
+
+  return null;
+}
+
+// ---------- SSE stream ----------
+async function streamChat(
+  messages: Msg[],
+  onDelta: (t: string) => void,
+  onDone: () => void,
+  onError: (e: string) => void,
+) {
   const resp = await fetch(CHAT_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-    },
+    headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
     body: JSON.stringify({ messages }),
   });
 
   if (resp.status === 429) { onError('Hệ thống đang bận, vui lòng thử lại sau.'); return; }
-  if (resp.status === 402) { onError('Dịch vụ tạm ngưng, vui lòng liên hệ cửa hàng.'); return; }
-  if (!resp.ok || !resp.body) { onError('Không thể kết nối AI, vui lòng thử lại.'); return; }
+  if (resp.status === 402) { onError('Dịch vụ tạm ngưng.'); return; }
+  if (!resp.ok || !resp.body) { onError('Không thể kết nối, vui lòng thử lại.'); return; }
 
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
-  let buffer = '';
-  let done = false;
+  let buf = '';
 
-  while (!done) {
-    const { done: readerDone, value } = await reader.read();
-    if (readerDone) break;
-    buffer += decoder.decode(value, { stream: true });
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
 
     let idx: number;
-    while ((idx = buffer.indexOf('\n')) !== -1) {
-      let line = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 1);
+    while ((idx = buf.indexOf('\n')) !== -1) {
+      let line = buf.slice(0, idx);
+      buf = buf.slice(idx + 1);
       if (line.endsWith('\r')) line = line.slice(0, -1);
-      if (line.startsWith(':') || line.trim() === '') continue;
       if (!line.startsWith('data: ')) continue;
-      const jsonStr = line.slice(6).trim();
-      if (jsonStr === '[DONE]') { done = true; break; }
+      const json = line.slice(6).trim();
+      if (json === '[DONE]') { onDone(); return; }
       try {
-        const parsed = JSON.parse(jsonStr);
-        const content = parsed.choices?.[0]?.delta?.content;
-        if (content) onDelta(content);
+        const c = JSON.parse(json).choices?.[0]?.delta?.content;
+        if (c) onDelta(c);
       } catch {
-        buffer = line + '\n' + buffer;
+        buf = line + '\n' + buf;
         break;
       }
     }
   }
-
-  if (buffer.trim()) {
-    for (let raw of buffer.split('\n')) {
-      if (!raw) continue;
-      if (raw.endsWith('\r')) raw = raw.slice(0, -1);
-      if (raw.startsWith(':') || raw.trim() === '') continue;
-      if (!raw.startsWith('data: ')) continue;
-      const jsonStr = raw.slice(6).trim();
-      if (jsonStr === '[DONE]') continue;
-      try {
-        const parsed = JSON.parse(jsonStr);
-        const content = parsed.choices?.[0]?.delta?.content;
-        if (content) onDelta(content);
-      } catch { /* ignore */ }
-    }
-  }
-
   onDone();
 }
 
+// ---------- Component ----------
 const AIChatWidget = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([
-    {
-      role: 'assistant',
-      content: `Xin chào quý khách! Tôi là trợ lý tư vấn của Kim Linh Jewelry 🏮\n\nTôi có thể hỗ trợ quý khách về:\n• Giá vàng, giá bạc hôm nay (${CURRENT_DATE})\n• Sản phẩm vàng tây theo mẫu\n• Kiến thức đầu tư vàng\n\nXin mời quý khách đặt câu hỏi ạ 🙏`,
-    },
+    { role: 'assistant', content: `Xin chào quý khách! 🏮 Tôi là trợ lý tư vấn của Kim Linh Jewelry.\n\nHỗ trợ: giá vàng/bạc, sản phẩm, kiến thức đầu tư.\nXin mời quý khách đặt câu hỏi ạ 🙏` },
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [isLightMode, setIsLightMode] = useState(false);
+  const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
-    const userMsg: Msg = { role: 'user', content: input };
-    setMessages((prev) => [...prev, userMsg]);
+  // Preload prices when chat opens
+  useEffect(() => {
+    if (isOpen) {
+      fetchCached(GOLD_URL, 'gold');
+      fetchCached(SILVER_URL, 'silver');
+    }
+  }, [isOpen]);
+
+  const handleSend = useCallback(async () => {
+    const text = input.trim();
+    if (!text || isLoading) return;
+
+    const userMsg: Msg = { role: 'user', content: text };
     setInput('');
+
+    // Try local answer first
+    const localAnswer = formatLocalPrices(text);
+    if (localAnswer) {
+      setMessages(prev => [...prev, userMsg, { role: 'assistant', content: localAnswer }]);
+      return;
+    }
+
+    // 2-step: show placeholder immediately
+    const placeholder = 'Dạ, em đang kiểm tra dữ liệu mới nhất ạ…';
+    setMessages(prev => [...prev, userMsg, { role: 'assistant', content: placeholder }]);
     setIsLoading(true);
 
-    let assistantSoFar = '';
-    const upsert = (chunk: string) => {
-      assistantSoFar += chunk;
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last?.role === 'assistant' && prev.length > 1 && prev[prev.length - 2]?.role === 'user') {
-          return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantSoFar } : m));
-        }
-        return [...prev, { role: 'assistant', content: assistantSoFar }];
-      });
+    let assistantText = '';
+    const update = (chunk: string) => {
+      assistantText += chunk;
+      setMessages(prev => prev.map((m, i) => i === prev.length - 1 ? { ...m, content: assistantText } : m));
     };
 
     try {
-      await streamChat({
-        messages: [...messages, userMsg],
-        onDelta: upsert,
-        onDone: () => setIsLoading(false),
-        onError: (err) => {
-          setMessages((prev) => [...prev, { role: 'assistant', content: err }]);
+      const timeout = setTimeout(() => {
+        if (!assistantText) setIsLightMode(true);
+      }, 5000);
+
+      await streamChat(
+        [...messages, userMsg],
+        (chunk) => {
+          clearTimeout(timeout);
+          setIsLightMode(false);
+          update(chunk);
+        },
+        () => { clearTimeout(timeout); setIsLoading(false); },
+        (err) => {
+          clearTimeout(timeout);
+          // Light mode fallback
+          const gold = priceCache.gold?.data;
+          if (gold?.prices) {
+            const fallback = gold.prices.map((p: any) => `• ${p.type}: Mua ${p.buy} | Bán ${p.sell}`).join('\n');
+            setMessages(prev => prev.map((m, i) =>
+              i === prev.length - 1 ? { ...m, content: `📊 Giá tham khảo (dữ liệu gần nhất):\n${fallback}\n\n⚠️ ${err}\nLiên hệ: 098 661 7939` } : m
+            ));
+            setIsLightMode(true);
+          } else {
+            setMessages(prev => prev.map((m, i) =>
+              i === prev.length - 1 ? { ...m, content: `${err}\nLiên hệ: 098 661 7939` } : m
+            ));
+          }
           setIsLoading(false);
         },
-      });
+      );
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: 'Xin lỗi quý khách, có lỗi xảy ra. Vui lòng liên hệ hotline 098 661 7939 để được tư vấn trực tiếp ạ 🙏' },
-      ]);
+      setMessages(prev => prev.map((m, i) =>
+        i === prev.length - 1 ? { ...m, content: 'Xin lỗi, có lỗi xảy ra. Liên hệ 098 661 7939 ạ 🙏' } : m
+      ));
       setIsLoading(false);
     }
-  };
+  }, [input, isLoading, messages]);
 
   return (
     <>
-      {/* Floating toggle button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-4 right-4 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg animate-pulse-gold hover:scale-110 transition-transform"
+        className="fixed bottom-4 right-4 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg hover:scale-105 transition-transform"
         aria-label="Mở chat tư vấn"
       >
         {isOpen ? <X className="w-6 h-6" /> : <MessageCircle className="w-6 h-6" />}
       </button>
 
-      {/* Chat panel */}
       {isOpen && (
         <div className="fixed bottom-20 right-4 z-50 w-[340px] max-w-[calc(100vw-2rem)] h-[460px] max-h-[70vh] bg-card border border-border rounded-lg shadow-xl flex flex-col overflow-hidden">
           {/* Header */}
-          <div className="px-4 py-3 border-b border-border bg-primary/5 flex items-center justify-between">
-            <div>
-              <p className="font-display font-semibold text-foreground text-sm">🏮 Tư vấn Kim Linh</p>
-              <p className="text-[10px] text-muted-foreground font-body">
-                AI tư vấn giá vàng – cập nhật {CURRENT_DATE}
-              </p>
+          <div className="px-4 py-2.5 border-b border-border bg-primary/5 flex items-center justify-between">
+            <div className="min-w-0">
+              <p className="font-display font-semibold text-foreground text-sm truncate">🏮 Tư vấn Kim Linh</p>
+              <div className="flex items-center gap-1">
+                {isLightMode ? <WifiOff className="w-3 h-3 text-muted-foreground" /> : <Wifi className="w-3 h-3 text-primary" />}
+                <p className="text-[10px] text-muted-foreground font-body">
+                  {isLightMode ? 'Đang dùng dữ liệu gần nhất' : `Cập nhật ${CURRENT_DATE}`}
+                </p>
+              </div>
             </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="p-1 rounded hover:bg-secondary transition-colors"
-              aria-label="Thu gọn chat"
-            >
+            <button onClick={() => setIsOpen(false)} className="p-1 rounded hover:bg-secondary" aria-label="Thu gọn">
               <Minimize2 className="w-4 h-4 text-muted-foreground" />
             </button>
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
             {messages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div
-                  className={`max-w-[85%] rounded-lg px-3 py-2 text-sm font-body whitespace-pre-wrap ${
-                    msg.role === 'user'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-secondary text-secondary-foreground'
-                  }`}
-                >
+                <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm font-body whitespace-pre-wrap ${
+                  msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'
+                }`}>
                   {msg.content}
                 </div>
               </div>
@@ -187,11 +247,11 @@ const AIChatWidget = () => {
                 </div>
               </div>
             )}
-            <div ref={messagesEndRef} />
+            <div ref={endRef} />
           </div>
 
           {/* Input */}
-          <div className="p-3 border-t border-border">
+          <div className="p-2.5 border-t border-border">
             <div className="flex gap-2">
               <input
                 type="text"
@@ -205,7 +265,7 @@ const AIChatWidget = () => {
               <button
                 onClick={handleSend}
                 disabled={isLoading}
-                className="p-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                className="p-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
                 <Send className="w-4 h-4" />
               </button>
