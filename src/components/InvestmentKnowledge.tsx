@@ -1,25 +1,21 @@
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { BookOpen } from 'lucide-react';
-
-const articles = [
-  {
-    title: 'Vì sao nên đầu tư vàng?',
-    summary: 'Vàng là kênh trú ẩn an toàn khi kinh tế biến động. Giá trị vàng có xu hướng tăng dài hạn, giúp bảo toàn tài sản trước lạm phát và rủi ro tiền tệ.',
-  },
-  {
-    title: 'Xu hướng giá vàng gần đây',
-    summary: 'Giá vàng thế giới liên tục lập đỉnh mới trong năm 2025, chạm mốc gần $3,000/oz. Nhu cầu mua vàng từ các ngân hàng trung ương tăng mạnh.',
-  },
-  {
-    title: 'Khi nào nên mua vàng?',
-    summary: 'Thời điểm tốt để mua vàng là khi giá điều chỉnh giảm sau các đợt tăng mạnh. Nên mua dần đều đặn thay vì dồn một lần để giảm rủi ro.',
-  },
-  {
-    title: 'Lưu ý khi mua vàng vật chất',
-    summary: 'Luôn mua tại tiệm vàng uy tín, kiểm tra tem đóng, hóa đơn đầy đủ. Giữ hóa đơn cẩn thận để bán lại được giá tốt nhất.',
-  },
-];
+import { Skeleton } from '@/components/ui/skeleton';
 
 const InvestmentKnowledge = () => {
+  const { data: articles, isLoading } = useQuery({
+    queryKey: ['knowledge-articles'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('knowledge_articles')
+        .select('*')
+        .eq('is_published', true)
+        .order('sort_order');
+      return data || [];
+    },
+  });
+
   return (
     <section id="kien-thuc" className="section-padding bg-card">
       <div className="max-w-4xl mx-auto">
@@ -30,21 +26,27 @@ const InvestmentKnowledge = () => {
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {articles.map((article, i) => (
-            <div key={i} className="glass-card p-5 hover:shadow-md transition-shadow">
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-md bg-primary/10 mt-0.5">
-                  <BookOpen className="w-4 h-4 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-display font-semibold text-foreground mb-2">{article.title}</h3>
-                  <p className="text-sm text-muted-foreground font-body leading-relaxed">{article.summary}</p>
+        {isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-28 w-full" />)}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {articles?.map((article) => (
+              <div key={article.id} className="glass-card p-5 hover:shadow-md transition-shadow">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-md bg-primary/10 mt-0.5">
+                    <BookOpen className="w-4 h-4 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-display font-semibold text-foreground mb-2">{article.title}</h3>
+                    <p className="text-sm text-muted-foreground font-body leading-relaxed">{article.summary}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
         <p className="text-xs text-muted-foreground text-center mt-6 font-body">
           Nội dung mang tính tham khảo, không phải tư vấn tài chính • Cập nhật: {new Date().toLocaleDateString('vi-VN')}

@@ -8,6 +8,7 @@ import ContactSection from '@/components/ContactSection';
 import Footer from '@/components/Footer';
 import FloatingButtons from '@/components/FloatingButtons';
 import AIChatWidget from '@/components/AIChatWidget';
+import AboutSection from '@/components/AboutSection';
 
 const Index = () => {
   return (
@@ -15,6 +16,7 @@ const Index = () => {
       <Navbar />
       <main>
         <HeroSection />
+        <AboutSection />
         <WorldGoldPrice />
         <DomesticPrices />
         <ProductShowcase />
