@@ -7,8 +7,24 @@ const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 const GOLD_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-gold-prices`;
 const SILVER_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-silver-prices`;
 const AUTH_HEADER = { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` };
-const CURRENT_DATE = '03/03/2026';
 const CACHE_TTL = 90_000;
+
+// Rotating placeholders
+const PLACEHOLDERS = [
+  'Dạ, em cảm ơn anh/chị đã quan tâm đến tiệm vàng gia đình em ạ, em xin phép kiểm tra thông tin mới nhất để gửi mình ngay ạ…',
+  'Dạ, em cảm ơn anh/chị đã tin tưởng tiệm vàng gia đình em ạ, em kiểm tra dữ liệu mới nhất và phản hồi mình ngay ạ…',
+  'Dạ, em cảm ơn anh/chị đã ghé tiệm vàng gia đình em ạ, em xem lại thông tin mới nhất rồi báo mình ngay ạ…',
+];
+let placeholderIdx = Math.floor(Math.random() * PLACEHOLDERS.length);
+function nextPlaceholder(): string {
+  const msg = PLACEHOLDERS[placeholderIdx];
+  placeholderIdx = (placeholderIdx + 1) % PLACEHOLDERS.length;
+  return msg;
+}
+
+function getCurrentDateVN(): string {
+  return new Date().toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', year: 'numeric' });
+}
 
 // ---------- Price cache ----------
 interface PriceCache {
@@ -32,32 +48,28 @@ async function fetchCached(url: string, key: 'gold' | 'silver') {
   }
 }
 
-// Preload on module init (non-blocking)
+// Preload on module init
 fetchCached(GOLD_URL, 'gold');
 fetchCached(SILVER_URL, 'silver');
 
 // ---------- Local keyword router ----------
-function tryLocalAnswer(): string | null {
-  const gold = priceCache.gold?.data;
-  if (!gold?.prices) return null;
-  return null; // all queries go to AI for now, but cache is warm
-}
-
 function formatLocalPrices(keyword: string): string | null {
   const gold = priceCache.gold?.data;
   if (!gold?.prices) return null;
 
   const kw = keyword.toLowerCase();
   const prices = gold.prices as Array<{ type: string; buy: string; sell: string; category: string }>;
+  const dateStr = getCurrentDateVN();
+  const sourceLabel = gold.isManual ? '📌 Giá thủ công (Admin)' : '🔄 Giá cập nhật tự động';
 
   if (kw.includes('vàng tây') || kw.includes('10k')) {
     const p = prices.find(p => p.type.includes('10K') || p.type.includes('Tây'));
-    if (p) return `Theo cập nhật ${CURRENT_DATE}:\n• ${p.type}: Mua ${p.buy} | Bán ${p.sell} (nghìn đồng/chỉ)\n\n⚡ Giá tham khảo – liên hệ 098 661 7939 để chốt giá chính xác ạ.`;
+    if (p) return `Theo cập nhật ${dateStr}:\n• ${p.type}: Mua ${p.buy} | Bán ${p.sell} (nghìn đồng/chỉ)\n${sourceLabel}\n\n⚡ Giá tham khảo – liên hệ 098 661 7939 để chốt giá chính xác ạ.`;
   }
 
   if (kw.includes('9999') || kw.includes('24k')) {
     const p = prices.find(p => p.type.includes('9999'));
-    if (p) return `Theo cập nhật ${CURRENT_DATE}:\n• ${p.type}: Mua ${p.buy} | Bán ${p.sell} (nghìn đồng/chỉ)\n\n⚡ Giá tham khảo – liên hệ 098 661 7939 để chốt giá chính xác ạ.`;
+    if (p) return `Theo cập nhật ${dateStr}:\n• ${p.type}: Mua ${p.buy} | Bán ${p.sell} (nghìn đồng/chỉ)\n${sourceLabel}\n\n⚡ Giá tham khảo – liên hệ 098 661 7939 để chốt giá chính xác ạ.`;
   }
 
   if (kw.includes('liên hệ') || kw.includes('địa chỉ') || kw.includes('hotline')) {
@@ -128,7 +140,6 @@ const AIChatWidget = () => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Preload prices when chat opens
   useEffect(() => {
     if (isOpen) {
       fetchCached(GOLD_URL, 'gold');
@@ -150,8 +161,8 @@ const AIChatWidget = () => {
       return;
     }
 
-    // 2-step: show placeholder immediately
-    const placeholder = 'Dạ, em đang kiểm tra dữ liệu mới nhất ạ…';
+    // 2-step: show rotating placeholder immediately
+    const placeholder = nextPlaceholder();
     setMessages(prev => [...prev, userMsg, { role: 'assistant', content: placeholder }]);
     setIsLoading(true);
 
@@ -176,7 +187,6 @@ const AIChatWidget = () => {
         () => { clearTimeout(timeout); setIsLoading(false); },
         (err) => {
           clearTimeout(timeout);
-          // Light mode fallback
           const gold = priceCache.gold?.data;
           if (gold?.prices) {
             const fallback = gold.prices.map((p: any) => `• ${p.type}: Mua ${p.buy} | Bán ${p.sell}`).join('\n');
@@ -200,6 +210,8 @@ const AIChatWidget = () => {
     }
   }, [input, isLoading, messages]);
 
+  const dateStr = getCurrentDateVN();
+
   return (
     <>
       <button
@@ -219,7 +231,7 @@ const AIChatWidget = () => {
               <div className="flex items-center gap-1">
                 {isLightMode ? <WifiOff className="w-3 h-3 text-muted-foreground" /> : <Wifi className="w-3 h-3 text-primary" />}
                 <p className="text-[10px] text-muted-foreground font-body">
-                  {isLightMode ? 'Đang dùng dữ liệu gần nhất' : `Cập nhật ${CURRENT_DATE}`}
+                  {isLightMode ? 'Đang dùng dữ liệu gần nhất' : `Cập nhật ${dateStr}`}
                 </p>
               </div>
             </div>
