@@ -10,10 +10,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { LogOut, Plus, Pencil, Trash2, Upload, Users, Package, MapPin, Info, BookOpen } from 'lucide-react';
+import { LogOut, Plus, Pencil, Trash2, Upload, Users, Package, MapPin, Info, BookOpen, DollarSign } from 'lucide-react';
 import AdminMapEditor from '@/components/AdminMapEditor';
 import AdminAboutEditor from '@/components/AdminAboutEditor';
 import AdminKnowledgeEditor from '@/components/AdminKnowledgeEditor';
+import AdminPriceEditor from '@/components/AdminPriceEditor';
 import { getTierLabel, getTierColor, type Profile } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 
@@ -36,7 +37,7 @@ const AdminDashboard = () => {
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [newProduct, setNewProduct] = useState<Omit<Product, 'id'> | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [activeSection, setActiveSection] = useState<'products' | 'customers' | 'map' | 'about' | 'knowledge'>('products');
+  const [activeSection, setActiveSection] = useState<'products' | 'customers' | 'map' | 'about' | 'knowledge' | 'prices'>('products');
   const [customers, setCustomers] = useState<Profile[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [editCustomer, setEditCustomer] = useState<Profile | null>(null);
@@ -144,6 +145,9 @@ const AdminDashboard = () => {
             <Button variant={activeSection === 'knowledge' ? 'default' : 'outline'} size="sm" onClick={() => setActiveSection('knowledge')}>
               <BookOpen className="w-4 h-4 mr-1" />Kiến thức
             </Button>
+            <Button variant={activeSection === 'prices' ? 'default' : 'outline'} size="sm" onClick={() => setActiveSection('prices')}>
+              <DollarSign className="w-4 h-4 mr-1" />Giá
+            </Button>
             <Button variant={activeSection === 'map' ? 'default' : 'outline'} size="sm" onClick={() => setActiveSection('map')}>
               <MapPin className="w-4 h-4 mr-1" />Bản đồ
             </Button>
@@ -236,6 +240,8 @@ const AdminDashboard = () => {
           <AdminAboutEditor />
         ) : activeSection === 'knowledge' ? (
           <AdminKnowledgeEditor />
+        ) : activeSection === 'prices' ? (
+          <AdminPriceEditor />
         ) : (
           <AdminMapEditor />
         )}

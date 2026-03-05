@@ -11,6 +11,8 @@ const DomesticPrices = () => {
   const silverPrices = silverData?.prices || [];
   const goldUpdated = goldData?.updatedAt ? new Date(goldData.updatedAt).toLocaleTimeString('vi-VN') : '';
   const silverUpdated = silverData?.updatedAt ? new Date(silverData.updatedAt).toLocaleTimeString('vi-VN') : '';
+  const goldIsManual = goldData?.isManual;
+  const silverIsManual = silverData?.isManual;
 
   const renderTable = (
     items: { type: string; buy: string; sell: string; category?: string }[],
@@ -86,9 +88,19 @@ const DomesticPrices = () => {
               </TabsList>
             </div>
             <TabsContent value="gold" className="mt-0">
+              {goldIsManual && (
+                <div className="px-4 md:px-6 pt-3">
+                  <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary font-body">📌 Giá thủ công (Admin)</span>
+                </div>
+              )}
               {renderTable(goldPrices, goldLoading, goldError, 'vàng', goldUpdated, 'nghìn đồng/chỉ')}
             </TabsContent>
             <TabsContent value="silver" className="mt-0">
+              {silverIsManual && (
+                <div className="px-4 md:px-6 pt-3">
+                  <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary font-body">📌 Giá thủ công (Admin)</span>
+                </div>
+              )}
               {renderTable(silverPrices, silverLoading, silverError, 'bạc', silverUpdated, 'VNĐ/lượng')}
             </TabsContent>
           </Tabs>
