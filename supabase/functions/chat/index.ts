@@ -1,54 +1,71 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const CURRENT_DATE = "03/03/2026";
-const CACHE_TTL = 90_000; // 90 seconds
+const CACHE_TTL = 90_000;
 
-// In-memory price cache
 let goldCache: { data: string; ts: number } | null = null;
 let silverCache: { data: string; ts: number } | null = null;
+let manualGoldCache: { data: string | null; ts: number } | null = null;
+let manualSilverCache: { data: string | null; ts: number } | null = null;
 
-const SYSTEM_PROMPT = `Bạn là trợ lý tư vấn của tiệm vàng Kim Linh Jewelry – tiệm vàng gia đình uy tín tại Sầm Sơn, Thanh Hóa.
-Ngày hôm nay: ${CURRENT_DATE}.
+function getCurrentDate(): string {
+  return new Date().toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", year: "numeric" });
+}
 
-PHONG CÁCH:
-- Lịch sự, nhẹ nhàng, chuyên nghiệp. Xưng "em", gọi khách "anh/chị".
-- Mở đầu: "Dạ, em xin phép chia sẻ…" hoặc "Theo cập nhật hôm nay…"
-- Kết thúc: "Rất cảm ơn anh/chị đã quan tâm ạ."
-- Không bán hàng ép buộc, không phóng đại lợi nhuận, không cam kết tài chính.
+function getCurrentTime(): string {
+  return new Date().toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit" });
+}
 
-QUAN TRỌNG VỀ FORMAT:
-- Trả lời NGẮN GỌN, súc tích, tối đa 150 từ.
-- CHỈ ghi ngày 1 lần duy nhất ở đầu câu trả lời.
-- Không lặp lại thông tin, không nhắc lại địa chỉ/hotline nếu không được hỏi.
-- Dùng bullet points ngắn cho bảng giá.
+function getSupabaseClient() {
+  return createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
+}
 
-CHỨC NĂNG:
-- Giá vàng trong nước (SJC, 24K/9999, 18K, 14K, 10K), giá vàng thế giới XAU/USD
-- Giá bạc trong nước
-- Sản phẩm vàng tây: nhẫn, dây chuyền, lắc tay, bông tai, nhẫn cưới
-- Cách tính giá = giá vàng × trọng lượng (chỉ)
-- Kiến thức đầu tư vàng cơ bản
+async function fetchManualPrices(type: 'gold' | 'silver'): Promise<string | null> {
+  const cacheRef = type === 'gold' ? manualGoldCache : manualSilverCache;
+  const now = Date.now();
+  if (cacheRef && now - cacheRef.ts < CACHE_TTL) return cacheRef.data;
 
-LOGIC:
-- "giá vàng hôm nay" → liệt kê ngắn gọn các loại vàng chính
-- "giá vàng tây" → trích giá Vàng Tây 10K
-- "giá vàng 9999" → trích giá Nhẫn Ép Vỉ 9999
-- "giá bạc" → liệt kê giá bạc
-- "mua vàng làm quà" → gợi ý vàng tây nhẹ
-- "đầu tư" → ưu/nhược điểm ngắn gọn, nhắc tham khảo
-- Ngoài phạm vi → "Dạ, câu hỏi này nằm ngoài phạm vi hỗ trợ của em ạ."
+  try {
+    const sb = getSupabaseClient();
+    const settingKey = type === 'gold' ? 'gold_price_manual' : 'silver_price_manual';
+    const { data: setting } = await sb.from('site_settings').select('value').eq('key', settingKey).maybeSingle();
+    const isManual = (setting?.value as any)?.enabled === true;
 
-QUY TẮC:
-1. Hotline/Zalo: 098 661 7939
-2. Giá chỉ mang tính tham khảo
-3. Địa chỉ: Số 50 Nguyễn Thị Minh Khai, phường Trường Sơn, Sầm Sơn, Thanh Hóa
-4. Giờ làm việc: T2–CN, 8:00–17:00
-5. Không lưu/yêu cầu thông tin cá nhân`;
+    if (!isManual) {
+      const result = { data: null, ts: now };
+      if (type === 'gold') manualGoldCache = result; else manualSilverCache = result;
+      return null;
+    }
+
+    const { data: overrides } = await sb.from('price_overrides').select('*').eq('price_type', type).eq('is_active', true);
+    if (!overrides?.length) {
+      const result = { data: null, ts: now };
+      if (type === 'gold') manualGoldCache = result; else manualSilverCache = result;
+      return null;
+    }
+
+    const label = type === 'gold' ? 'GIÁ VÀNG THỦ CÔNG (Admin cập nhật)' : 'GIÁ BẠC THỦ CÔNG (Admin cập nhật)';
+    let text = `${label}:\n`;
+    for (const o of overrides) {
+      text += `- ${o.item_name}: Mua ${o.buy_price || '—'} | Bán ${o.sell_price || '—'}\n`;
+    }
+
+    const result = { data: text, ts: now };
+    if (type === 'gold') manualGoldCache = result; else manualSilverCache = result;
+    return text;
+  } catch (e) {
+    console.error(`Manual ${type} price fetch error:`, e);
+    return cacheRef?.data ?? null;
+  }
+}
 
 async function fetchGoldPrices(): Promise<string> {
   const now = Date.now();
@@ -77,7 +94,7 @@ async function fetchGoldPrices(): Promise<string> {
       { row: 4, name: "Bạc", cat: "Bạc" },
     ];
 
-    let result = "GIÁ VÀNG TRONG NƯỚC (nghìn đồng/chỉ):\n";
+    let result = "GIÁ VÀNG TỰ ĐỘNG (cập nhật tự động):\n";
     for (const r of rows) {
       let buyRaw = valueMap[`r${r.row}c1`] || "0";
       const sellRaw = valueMap[`r${r.row}c2`] || "0";
@@ -134,7 +151,7 @@ async function fetchSilverPrices(): Promise<string> {
     const prices = result.data?.extract?.silverPrices || result.extract?.silverPrices || [];
     if (prices.length === 0) return "GIÁ BẠC: Tạm thời không lấy được dữ liệu.\n";
 
-    let text = "GIÁ BẠC TRONG NƯỚC (VNĐ/lượng):\n";
+    let text = "GIÁ BẠC TỰ ĐỘNG (cập nhật tự động):\n";
     for (const p of prices.slice(0, 5)) {
       text += `- ${p.type}: Mua ${p.buy} | Bán ${p.sell}\n`;
     }
@@ -156,10 +173,61 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    // Fetch prices in parallel (uses cache if fresh)
-    const [goldData, silverData] = await Promise.all([fetchGoldPrices(), fetchSilverPrices()]);
+    const currentDate = getCurrentDate();
+    const currentTime = getCurrentTime();
 
-    const priceContext = `\n\n--- DỮ LIỆU GIÁ CẬP NHẬT NGÀY ${CURRENT_DATE} ---\n${goldData}\n${silverData}Lưu ý: Giá chỉ mang tính tham khảo.\n---`;
+    // Fetch manual prices first (they take priority)
+    const [manualGold, manualSilver, autoGold, autoSilver] = await Promise.all([
+      fetchManualPrices('gold'),
+      fetchManualPrices('silver'),
+      fetchGoldPrices(),
+      fetchSilverPrices(),
+    ]);
+
+    // Manual prices override auto prices
+    const goldData = manualGold || autoGold;
+    const silverData = manualSilver || autoSilver;
+
+    const SYSTEM_PROMPT = `Bạn là trợ lý tư vấn của tiệm vàng Kim Linh Jewelry – tiệm vàng gia đình uy tín tại Sầm Sơn, Thanh Hóa.
+Ngày: ${currentDate}. Giờ: ${currentTime}.
+
+PHONG CÁCH:
+- Lịch sự, nhẹ nhàng, tự nhiên như người thật, tinh tế kiểu Nhật. Xưng "em", gọi khách "anh/chị".
+- Mở đầu: "Dạ," hoặc "Theo cập nhật hôm nay,"
+- Kết thúc ngắn gọn, không lặp lại thông tin.
+- Không bán hàng ép buộc, không phóng đại.
+
+QUAN TRỌNG VỀ FORMAT:
+- Trả lời NGẮN GỌN, súc tích, tối đa 120 từ.
+- CHỈ ghi ngày 1 lần duy nhất ở đầu câu trả lời nếu cần.
+- Không lặp lại thông tin, không nhắc lại địa chỉ/hotline nếu không được hỏi.
+- Khi báo giá → rõ ràng, súc tích, KHÔNG giải thích thêm nếu khách không hỏi.
+- Dùng bullet points ngắn cho bảng giá.
+
+CHỨC NĂNG:
+- Giá vàng trong nước (SJC, 24K/9999, 18K, 14K, 10K), giá vàng thế giới XAU/USD
+- Giá bạc trong nước
+- Sản phẩm vàng tây: nhẫn, dây chuyền, lắc tay, bông tai, nhẫn cưới
+- Cách tính giá = giá vàng × trọng lượng (chỉ)
+- Kiến thức đầu tư vàng cơ bản
+
+LOGIC:
+- "giá vàng hôm nay" → liệt kê ngắn gọn các loại vàng chính
+- "giá vàng tây" → trích giá Vàng Tây 10K
+- "giá vàng 9999" → trích giá Nhẫn Ép Vỉ 9999
+- "giá bạc" → liệt kê giá bạc
+- "mua vàng làm quà" → gợi ý vàng tây nhẹ
+- "đầu tư" → ưu/nhược điểm ngắn gọn, nhắc tham khảo
+- Ngoài phạm vi → "Dạ, câu hỏi này nằm ngoài phạm vi hỗ trợ của em ạ."
+
+QUY TẮC:
+1. Hotline/Zalo: 098 661 7939
+2. Giá chỉ mang tính tham khảo
+3. Địa chỉ: Số 50 Nguyễn Thị Minh Khai, phường Trường Sơn, Sầm Sơn, Thanh Hóa
+4. Giờ làm việc: T2–CN, 8:00–17:00
+5. Không lưu/yêu cầu thông tin cá nhân`;
+
+    const priceContext = `\n\n--- DỮ LIỆU GIÁ CẬP NHẬT ${currentDate} ${currentTime} ---\n${goldData}\n${silverData}Lưu ý: Giá chỉ mang tính tham khảo.\n---`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
