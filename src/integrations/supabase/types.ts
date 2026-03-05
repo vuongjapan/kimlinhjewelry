@@ -112,6 +112,78 @@ export type Database = {
         }
         Relationships: []
       }
+      price_edit_history: {
+        Row: {
+          edited_at: string
+          edited_by: string | null
+          id: string
+          item_name: string
+          new_buy: string | null
+          new_sell: string | null
+          old_buy: string | null
+          old_sell: string | null
+          price_type: string
+        }
+        Insert: {
+          edited_at?: string
+          edited_by?: string | null
+          id?: string
+          item_name: string
+          new_buy?: string | null
+          new_sell?: string | null
+          old_buy?: string | null
+          old_sell?: string | null
+          price_type: string
+        }
+        Update: {
+          edited_at?: string
+          edited_by?: string | null
+          id?: string
+          item_name?: string
+          new_buy?: string | null
+          new_sell?: string | null
+          old_buy?: string | null
+          old_sell?: string | null
+          price_type?: string
+        }
+        Relationships: []
+      }
+      price_overrides: {
+        Row: {
+          buy_price: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          item_name: string
+          price_type: string
+          sell_price: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          buy_price?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          item_name: string
+          price_type: string
+          sell_price?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          buy_price?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          item_name?: string
+          price_type?: string
+          sell_price?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           category: Database["public"]["Enums"]["product_category"]
