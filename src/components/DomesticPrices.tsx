@@ -24,14 +24,21 @@ const DomesticPrices = () => {
   ) => {
     if (loading) {
       return (
-        <div className="flex items-center justify-center py-12">
+        <div className="flex flex-col items-center justify-center py-12 gap-3">
           <Loader2 className="w-6 h-6 animate-spin text-primary" />
-          <span className="ml-2 text-sm text-muted-foreground font-body">Đang tải giá {label}...</span>
+          <span className="text-sm text-muted-foreground font-body">Đang cập nhật giá…</span>
+          <span className="text-xs text-muted-foreground font-body">Liên hệ cửa hàng để cập nhật giá mới nhất</span>
         </div>
       );
     }
     if (error) {
-      return <div className="text-center py-12 text-sm text-muted-foreground font-body">{error}</div>;
+      return (
+        <div className="flex flex-col items-center justify-center py-12 gap-2 text-center px-4">
+          <p className="text-sm font-body font-medium text-foreground">Không thể tải bảng giá.</p>
+          <p className="text-xs text-muted-foreground font-body">Vui lòng liên hệ cửa hàng để được báo giá chính xác.</p>
+          <a href="tel:0986617939" className="mt-2 text-sm text-primary font-body hover:underline">📞 098 661 7939</a>
+        </div>
+      );
     }
     return (
       <>
