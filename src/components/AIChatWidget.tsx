@@ -247,24 +247,25 @@ const AIChatWidget = () => {
   // Mobile: use drawer-style full-width layout
   // Desktop: floating card bottom-right
   // Compute mobile chat height based on visual viewport (keyboard-aware)
-  const mobileHeight = isMobile && viewportHeight ? `${viewportHeight}px` : '90dvh';
+  // Mobile: 60% of visual viewport so keyboard doesn't cover input
+  const mobileHeight = isMobile && viewportHeight ? `${Math.min(viewportHeight * 0.6, 420)}px` : '55dvh';
 
   const chatPanel = isOpen ? (
     <div
       ref={chatContainerRef}
       className={
         isMobile
-          ? 'fixed inset-x-0 bottom-0 z-50 flex flex-col bg-card border-t border-border shadow-2xl'
+          ? 'fixed z-50 flex flex-col bg-card border border-border shadow-2xl'
           : 'fixed bottom-20 right-4 z-50 w-[370px] max-w-[calc(100vw-2rem)] h-[480px] max-h-[70vh] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden'
       }
       style={isMobile ? {
         height: mobileHeight,
         maxHeight: mobileHeight,
-        borderRadius: '16px 16px 0 0',
-        width: '100%',
-        maxWidth: '420px',
-        left: '50%',
-        transform: 'translateX(-50%)',
+        borderRadius: '16px',
+        width: '92%',
+        maxWidth: '400px',
+        right: '4%',
+        bottom: '72px',
         willChange: 'height',
         transition: 'height 0.15s ease-out',
       } : undefined}
