@@ -128,16 +128,24 @@ const GREETING = `Dạ, em xin chào anh/chị, em là trợ lý tư vấn của
 
 // ---------- Component ----------
 const AIChatWidget = () => {
-  const [isOpen, setIsOpen] = useState(true); // auto-open
+  const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([
     { role: 'assistant', content: GREETING },
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isLightMode, setIsLightMode] = useState(false);
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
+
+  // Auto-open after a short delay
+  useEffect(() => {
+    const t = setTimeout(() => setIsOpen(true), 800);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -150,20 +158,27 @@ const AIChatWidget = () => {
     }
   }, [isOpen]);
 
-  // On mobile: handle visual viewport resize (keyboard open/close)
+  // Track visual viewport for keyboard-aware layout
   useEffect(() => {
     if (!isMobile || !isOpen) return;
     const vv = window.visualViewport;
     if (!vv) return;
 
     const onResize = () => {
-      // Scroll input into view when keyboard opens
+      setViewportHeight(vv.height);
       setTimeout(() => {
         endRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
+        inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 50);
     };
+    // Set initial
+    setViewportHeight(vv.height);
     vv.addEventListener('resize', onResize);
-    return () => vv.removeEventListener('resize', onResize);
+    vv.addEventListener('scroll', onResize);
+    return () => {
+      vv.removeEventListener('resize', onResize);
+      vv.removeEventListener('scroll', onResize);
+    };
   }, [isMobile, isOpen]);
 
   const handleSend = useCallback(async () => {
