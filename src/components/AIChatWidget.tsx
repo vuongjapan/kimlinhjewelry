@@ -246,14 +246,28 @@ const AIChatWidget = () => {
 
   // Mobile: use drawer-style full-width layout
   // Desktop: floating card bottom-right
+  // Compute mobile chat height based on visual viewport (keyboard-aware)
+  const mobileHeight = isMobile && viewportHeight ? `${viewportHeight}px` : '90dvh';
+
   const chatPanel = isOpen ? (
     <div
+      ref={chatContainerRef}
       className={
         isMobile
-          ? 'fixed inset-x-0 bottom-0 z-50 flex flex-col bg-card border-t border-border shadow-xl'
-          : 'fixed bottom-20 right-4 z-50 w-[340px] max-w-[calc(100vw-2rem)] h-[460px] max-h-[70vh] bg-card border border-border rounded-lg shadow-xl flex flex-col overflow-hidden'
+          ? 'fixed inset-x-0 bottom-0 z-50 flex flex-col bg-card border-t border-border shadow-2xl'
+          : 'fixed bottom-20 right-4 z-50 w-[370px] max-w-[calc(100vw-2rem)] h-[480px] max-h-[70vh] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden'
       }
-      style={isMobile ? { height: '75dvh', maxHeight: '75dvh', borderRadius: '16px 16px 0 0' } : undefined}
+      style={isMobile ? {
+        height: mobileHeight,
+        maxHeight: mobileHeight,
+        borderRadius: '16px 16px 0 0',
+        width: '100%',
+        maxWidth: '420px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        willChange: 'height',
+        transition: 'height 0.15s ease-out',
+      } : undefined}
     >
       {/* Header */}
       <div className="px-4 py-3 border-b border-border bg-primary/5 flex items-center justify-between shrink-0">
@@ -272,11 +286,11 @@ const AIChatWidget = () => {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2.5 overscroll-contain">
+      <div className="flex-1 overflow-y-auto p-3 space-y-2.5 overscroll-contain -webkit-overflow-scrolling-touch">
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] rounded-xl px-3.5 py-2.5 font-body whitespace-pre-wrap break-words ${
-              isMobile ? 'text-[15px] leading-relaxed' : 'text-sm'
+            <div className={`max-w-[85%] rounded-2xl px-4 py-3 font-body whitespace-pre-wrap break-words ${
+              isMobile ? 'text-[16px] leading-relaxed' : 'text-sm leading-relaxed'
             } ${
               msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'
             }`}>
@@ -286,7 +300,7 @@ const AIChatWidget = () => {
         ))}
         {isLoading && messages[messages.length - 1]?.role === 'user' && (
           <div className="flex justify-start">
-            <div className={`bg-secondary text-secondary-foreground rounded-xl px-3.5 py-2.5 font-body ${isMobile ? 'text-[15px]' : 'text-sm'}`}>
+            <div className={`bg-secondary text-secondary-foreground rounded-2xl px-4 py-3 font-body ${isMobile ? 'text-[16px]' : 'text-sm'}`}>
               <Loader2 className="w-4 h-4 animate-spin inline mr-1" />
               Đang trả lời...
             </div>
@@ -295,27 +309,33 @@ const AIChatWidget = () => {
         <div ref={endRef} />
       </div>
 
-      {/* Input */}
-      <div className={`shrink-0 border-t border-border ${isMobile ? 'p-3 pb-[env(safe-area-inset-bottom,12px)]' : 'p-2.5'}`}>
-        <div className="flex gap-2">
+      {/* Input – sticky bottom, always visible above keyboard */}
+      <div className={`shrink-0 border-t border-border bg-card ${isMobile ? 'px-3 py-2.5 pb-[max(env(safe-area-inset-bottom,8px),8px)]' : 'p-2.5'}`}>
+        <div className="flex gap-2 items-center">
           <input
             ref={inputRef}
             type="text"
+            inputMode="text"
+            enterKeyHint="send"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+            onFocus={() => {
+              if (isMobile) setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }), 300);
+            }}
             placeholder="Nhập câu hỏi..."
             disabled={isLoading}
-            className={`flex-1 px-3 py-2.5 rounded-lg border border-input bg-background text-foreground font-body focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 ${
-              isMobile ? 'text-base' : 'text-sm'
+            className={`flex-1 px-3.5 py-3 rounded-xl border border-input bg-background text-foreground font-body focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 ${
+              isMobile ? 'text-[16px]' : 'text-sm'
             }`}
+            style={{ fontSize: '16px' }}
           />
           <button
             onClick={handleSend}
             disabled={isLoading}
-            className="p-2.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="p-3 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 shrink-0"
           >
-            <Send className="w-4 h-4" />
+            <Send className="w-5 h-5" />
           </button>
         </div>
       </div>
