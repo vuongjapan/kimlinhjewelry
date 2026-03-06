@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { MessageCircle, X, Send, Loader2, Minimize2, Wifi, WifiOff } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
 
@@ -9,7 +10,6 @@ const SILVER_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-silv
 const AUTH_HEADER = { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` };
 const CACHE_TTL = 90_000;
 
-// Rotating placeholders
 const PLACEHOLDERS = [
   'Dạ, em cảm ơn anh/chị đã quan tâm đến tiệm vàng gia đình em ạ, em xin phép kiểm tra thông tin mới nhất để gửi mình ngay ạ…',
   'Dạ, em cảm ơn anh/chị đã tin tưởng tiệm vàng gia đình em ạ, em kiểm tra dữ liệu mới nhất và phản hồi mình ngay ạ…',
@@ -48,7 +48,6 @@ async function fetchCached(url: string, key: 'gold' | 'silver') {
   }
 }
 
-// Preload on module init
 fetchCached(GOLD_URL, 'gold');
 fetchCached(SILVER_URL, 'silver');
 
@@ -125,16 +124,20 @@ async function streamChat(
   onDone();
 }
 
+const GREETING = `Dạ, em xin chào anh/chị, em là trợ lý tư vấn của Kim Linh Jewelry. Nếu anh/chị cần xem giá vàng hoặc tư vấn sản phẩm, em luôn sẵn sàng hỗ trợ ạ. 🙏`;
+
 // ---------- Component ----------
 const AIChatWidget = () => {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(true); // auto-open
   const [messages, setMessages] = useState<Msg[]>([
-    { role: 'assistant', content: `Xin chào quý khách! 🏮 Tôi là trợ lý tư vấn của Kim Linh Jewelry.\n\nHỗ trợ: giá vàng/bạc, sản phẩm, kiến thức đầu tư.\nXin mời quý khách đặt câu hỏi ạ 🙏` },
+    { role: 'assistant', content: GREETING },
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isLightMode, setIsLightMode] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -147,6 +150,22 @@ const AIChatWidget = () => {
     }
   }, [isOpen]);
 
+  // On mobile: handle visual viewport resize (keyboard open/close)
+  useEffect(() => {
+    if (!isMobile || !isOpen) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const onResize = () => {
+      // Scroll input into view when keyboard opens
+      setTimeout(() => {
+        endRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    };
+    vv.addEventListener('resize', onResize);
+    return () => vv.removeEventListener('resize', onResize);
+  }, [isMobile, isOpen]);
+
   const handleSend = useCallback(async () => {
     const text = input.trim();
     if (!text || isLoading) return;
@@ -154,14 +173,12 @@ const AIChatWidget = () => {
     const userMsg: Msg = { role: 'user', content: text };
     setInput('');
 
-    // Try local answer first
     const localAnswer = formatLocalPrices(text);
     if (localAnswer) {
       setMessages(prev => [...prev, userMsg, { role: 'assistant', content: localAnswer }]);
       return;
     }
 
-    // 2-step: show rotating placeholder immediately
     const placeholder = nextPlaceholder();
     setMessages(prev => [...prev, userMsg, { role: 'assistant', content: placeholder }]);
     setIsLoading(true);
@@ -212,79 +229,97 @@ const AIChatWidget = () => {
 
   const dateStr = getCurrentDateVN();
 
-  return (
-    <>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-4 right-4 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg hover:scale-105 transition-transform"
-        aria-label="Mở chat tư vấn"
-      >
-        {isOpen ? <X className="w-6 h-6" /> : <MessageCircle className="w-6 h-6" />}
-      </button>
-
-      {isOpen && (
-        <div className="fixed bottom-20 right-4 z-50 w-[340px] max-w-[calc(100vw-2rem)] h-[460px] max-h-[70vh] bg-card border border-border rounded-lg shadow-xl flex flex-col overflow-hidden">
-          {/* Header */}
-          <div className="px-4 py-2.5 border-b border-border bg-primary/5 flex items-center justify-between">
-            <div className="min-w-0">
-              <p className="font-display font-semibold text-foreground text-sm truncate">🏮 Tư vấn Kim Linh</p>
-              <div className="flex items-center gap-1">
-                {isLightMode ? <WifiOff className="w-3 h-3 text-muted-foreground" /> : <Wifi className="w-3 h-3 text-primary" />}
-                <p className="text-[10px] text-muted-foreground font-body">
-                  {isLightMode ? 'Đang dùng dữ liệu gần nhất' : `Cập nhật ${dateStr}`}
-                </p>
-              </div>
-            </div>
-            <button onClick={() => setIsOpen(false)} className="p-1 rounded hover:bg-secondary" aria-label="Thu gọn">
-              <Minimize2 className="w-4 h-4 text-muted-foreground" />
-            </button>
-          </div>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {messages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm font-body whitespace-pre-wrap ${
-                  msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'
-                }`}>
-                  {msg.content}
-                </div>
-              </div>
-            ))}
-            {isLoading && messages[messages.length - 1]?.role === 'user' && (
-              <div className="flex justify-start">
-                <div className="bg-secondary text-secondary-foreground rounded-lg px-3 py-2 text-sm font-body">
-                  <Loader2 className="w-4 h-4 animate-spin inline mr-1" />
-                  Đang trả lời...
-                </div>
-              </div>
-            )}
-            <div ref={endRef} />
-          </div>
-
-          {/* Input */}
-          <div className="p-2.5 border-t border-border">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                placeholder="Nhập câu hỏi..."
-                disabled={isLoading}
-                className="flex-1 px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm font-body focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
-              />
-              <button
-                onClick={handleSend}
-                disabled={isLoading}
-                className="p-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            </div>
+  // Mobile: use drawer-style full-width layout
+  // Desktop: floating card bottom-right
+  const chatPanel = isOpen ? (
+    <div
+      className={
+        isMobile
+          ? 'fixed inset-x-0 bottom-0 z-50 flex flex-col bg-card border-t border-border shadow-xl'
+          : 'fixed bottom-20 right-4 z-50 w-[340px] max-w-[calc(100vw-2rem)] h-[460px] max-h-[70vh] bg-card border border-border rounded-lg shadow-xl flex flex-col overflow-hidden'
+      }
+      style={isMobile ? { height: '75dvh', maxHeight: '75dvh', borderRadius: '16px 16px 0 0' } : undefined}
+    >
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-border bg-primary/5 flex items-center justify-between shrink-0">
+        <div className="min-w-0">
+          <p className="font-display font-semibold text-foreground text-sm truncate">🏮 Tư vấn Kim Linh</p>
+          <div className="flex items-center gap-1">
+            {isLightMode ? <WifiOff className="w-3 h-3 text-muted-foreground" /> : <Wifi className="w-3 h-3 text-primary" />}
+            <p className="text-[10px] text-muted-foreground font-body">
+              {isLightMode ? 'Đang dùng dữ liệu gần nhất' : `Cập nhật ${dateStr}`}
+            </p>
           </div>
         </div>
+        <button onClick={() => setIsOpen(false)} className="p-1.5 rounded-md hover:bg-secondary" aria-label="Thu gọn">
+          <Minimize2 className="w-4 h-4 text-muted-foreground" />
+        </button>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-3 space-y-2.5 overscroll-contain">
+        {messages.map((msg, i) => (
+          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[85%] rounded-xl px-3.5 py-2.5 font-body whitespace-pre-wrap break-words ${
+              isMobile ? 'text-[15px] leading-relaxed' : 'text-sm'
+            } ${
+              msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'
+            }`}>
+              {msg.content}
+            </div>
+          </div>
+        ))}
+        {isLoading && messages[messages.length - 1]?.role === 'user' && (
+          <div className="flex justify-start">
+            <div className={`bg-secondary text-secondary-foreground rounded-xl px-3.5 py-2.5 font-body ${isMobile ? 'text-[15px]' : 'text-sm'}`}>
+              <Loader2 className="w-4 h-4 animate-spin inline mr-1" />
+              Đang trả lời...
+            </div>
+          </div>
+        )}
+        <div ref={endRef} />
+      </div>
+
+      {/* Input */}
+      <div className={`shrink-0 border-t border-border ${isMobile ? 'p-3 pb-[env(safe-area-inset-bottom,12px)]' : 'p-2.5'}`}>
+        <div className="flex gap-2">
+          <input
+            ref={inputRef}
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+            placeholder="Nhập câu hỏi..."
+            disabled={isLoading}
+            className={`flex-1 px-3 py-2.5 rounded-lg border border-input bg-background text-foreground font-body focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 ${
+              isMobile ? 'text-base' : 'text-sm'
+            }`}
+          />
+          <button
+            onClick={handleSend}
+            disabled={isLoading}
+            className="p-2.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  return (
+    <>
+      {/* Toggle button – hidden when chat is open on mobile */}
+      {!(isMobile && isOpen) && (
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="fixed bottom-4 right-4 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg hover:scale-105 transition-transform"
+          aria-label="Mở chat tư vấn"
+        >
+          {isOpen ? <X className="w-6 h-6" /> : <MessageCircle className="w-6 h-6" />}
+        </button>
       )}
+      {chatPanel}
     </>
   );
 };
