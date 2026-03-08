@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-interface WorldSilverData {
+interface WorldGoldData {
   price: string;
   change: string;
   unit: string;
@@ -14,14 +14,14 @@ interface WorldSilverData {
   source: string;
 }
 
-const CAFEF_URL = "https://cafef.vn/du-lieu/gia-bac-hom-nay/the-gioi.chn";
+const CAFEF_URL = "https://cafef.vn/du-lieu/gia-vang-hom-nay/the-gioi.chn";
 const CACHE_TTL = 5 * 60 * 1000;
 
-let cache: WorldSilverData | null = null;
+let cache: WorldGoldData | null = null;
 let cacheTimestamp = 0;
 let fetchInProgress = false;
 
-async function fetchFromFirecrawl(): Promise<WorldSilverData> {
+async function fetchFromFirecrawl(): Promise<WorldGoldData> {
   const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
   if (!apiKey) throw new Error('FIRECRAWL_API_KEY not configured');
 
@@ -35,14 +35,14 @@ async function fetchFromFirecrawl(): Promise<WorldSilverData> {
       url: CAFEF_URL,
       formats: ['extract'],
       extract: {
-        prompt: 'Extract the world silver price (giá bạc thế giới). Find the XAG/USD spot silver price (Bạc / Đô la Mỹ), the change amount and percentage, and the VND equivalent per ounce.',
+        prompt: 'Extract the world gold price (giá vàng thế giới/quốc tế). Find the XAU/USD spot price which should be around 2000-6000 USD/Ounce, the change amount and percentage, and the VND equivalent per ounce.',
         schema: {
           type: 'object',
           properties: {
-            price: { type: 'string', description: 'Current silver price in USD per ounce, e.g. "84.476"' },
-            change: { type: 'string', description: 'Change value and percent, e.g. "0 (0%)"' },
+            price: { type: 'string', description: 'Current gold price in USD per ounce, e.g. "5,171.92"' },
+            change: { type: 'string', description: 'Change value and percent, e.g. "21.62 (0.42%)"' },
             direction: { type: 'string', description: 'up, down, or nochange' },
-            vndPerOunce: { type: 'string', description: 'VND per ounce value, e.g. "2,212,426"' },
+            vndPerOunce: { type: 'string', description: 'VND per ounce value, e.g. "136.068.043"' },
           },
           required: ['price'],
         },
@@ -61,7 +61,7 @@ async function fetchFromFirecrawl(): Promise<WorldSilverData> {
   
   console.log("Firecrawl extract:", JSON.stringify(extractData));
 
-  if (!extractData?.price) throw new Error('No silver price extracted');
+  if (!extractData?.price) throw new Error('No gold price extracted');
 
   const direction = extractData.direction || 'nochange';
   let change = extractData.change || '0 (0%)';
@@ -85,7 +85,7 @@ function triggerBackgroundRefresh() {
   if (fetchInProgress) return;
   fetchInProgress = true;
   fetchFromFirecrawl()
-    .then(data => { cache = data; cacheTimestamp = Date.now(); console.log("Silver world cache refreshed:", data.price); })
+    .then(data => { cache = data; cacheTimestamp = Date.now(); console.log("Gold world cache refreshed:", data.price); })
     .catch(err => console.error("Background refresh failed:", err))
     .finally(() => { fetchInProgress = false; });
 }
@@ -119,9 +119,9 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error("Error fetching world silver price:", error);
+    console.error("Error fetching world gold price:", error);
     return new Response(
-      JSON.stringify({ error: "Không thể tải giá bạc thế giới" }),
+      JSON.stringify({ error: "Không thể tải giá vàng thế giới" }),
       { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
