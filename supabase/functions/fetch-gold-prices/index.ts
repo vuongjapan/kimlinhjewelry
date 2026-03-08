@@ -72,10 +72,13 @@ serve(async (req) => {
           buyRaw = adjustBuyPrice(buyRaw, -300);
         }
 
+        const buyNum = parseInt(buyRaw, 10);
+        const sellNum = parseInt(sellRaw, 10);
+
         return {
           type: cfg.type,
-          buy: formatPrice(buyRaw),
-          sell: formatPrice(sellRaw),
+          buy: (isNaN(buyNum) || buyNum <= 0) ? "Đang cập nhật" : formatPrice(buyRaw),
+          sell: (isNaN(sellNum) || sellNum <= 0) ? "Đang cập nhật" : formatPrice(sellRaw),
           category: cfg.category,
         };
       });
