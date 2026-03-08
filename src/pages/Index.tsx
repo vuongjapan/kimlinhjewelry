@@ -18,8 +18,8 @@ const Index = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
       <main>
-        <DomesticGoldPriceCard />
         <HeroSection />
+        <DomesticGoldPriceCard />
         <AboutSection />
         <WorldGoldPrice />
         <WorldSilverPrice />
