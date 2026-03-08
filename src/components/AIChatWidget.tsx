@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { MessageCircle, X, Send, Loader2, Minimize2, Wifi, WifiOff } from 'lucide-react';
+import { MessageCircle, X, Send, Loader2, Minimize2, Wifi, WifiOff, RotateCcw } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
