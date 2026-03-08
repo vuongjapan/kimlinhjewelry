@@ -20,7 +20,6 @@ const Index = () => {
       <main>
         <HeroSection />
         <DomesticGoldPriceCard />
-        <HeroSection />
         <AboutSection />
         <WorldGoldPrice />
         <WorldSilverPrice />
