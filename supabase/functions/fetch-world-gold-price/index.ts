@@ -33,29 +33,46 @@ async function fetchFromCafeF(): Promise<WorldGoldData> {
   if (!resp.ok) throw new Error(`CafeF returned ${resp.status}`);
   const html = await resp.text();
 
-  // Extract price: id="price_vang_dola">5,171.92</div>
-  const priceMatch = html.match(/id="price_vang_dola"[^>]*>([\d.,]+)<\/div>/);
+  // Try multiple patterns for price extraction
+  // Pattern 1: id="price_vang_dola">5,171.92</div>
+  let priceMatch = html.match(/id=["']price_vang_dola["'][^>]*>([\d.,]+)</);
+  // Pattern 2: class="price_vang_dola">
+  if (!priceMatch) priceMatch = html.match(/class=["']price_vang_dola["'][^>]*>([\d.,]+)</);
+  // Pattern 3: Look for the price near "Vàng / Đô la Mỹ"
+  if (!priceMatch) priceMatch = html.match(/Vàng\s*\/\s*Đô la Mỹ[\s\S]{0,200}?([\d]{1,2}[,.][\d]{3}[,.]?\d*)/);
+  
   const price = priceMatch?.[1] || "";
+  console.log("Extracted price:", price, "from match:", priceMatch?.[0]?.substring(0, 100));
 
-  // Extract change: id="priceChange_vang_dola">...<div class="up">21.62 (0.42%)</div>
-  const changeMatch = html.match(/id="priceChange_vang_dola"[^>]*>[\s\S]*?<div[^>]*>([\s\S]*?)<\/div>/);
-  let change = changeMatch?.[1]?.trim() || "0 (0%)";
-  // Clean HTML tags
-  change = change.replace(/<[^>]+>/g, '').trim();
+  // Extract change - look for change text near priceChange_vang_dola
+  let change = "0 (0%)";
+  const changeBlockMatch = html.match(/id=["']priceChange_vang_dola["'][\s\S]{0,500}/);
+  if (changeBlockMatch) {
+    // Look for numbers like "21.62 (0.42%)"
+    const numMatch = changeBlockMatch[0].match(/([\d.]+)\s*\(([\d.]+)%\)/);
+    if (numMatch) {
+      change = `${numMatch[1]} (${numMatch[2]}%)`;
+    }
+    // Detect direction
+    if (changeBlockMatch[0].includes('class="up"') || changeBlockMatch[0].includes("iconUp")) {
+      change = "+" + change;
+    } else if (changeBlockMatch[0].includes('class="down"') || changeBlockMatch[0].includes("iconDown")) {
+      change = "-" + change;
+    }
+  }
 
   // Extract VND per ounce: "1 Ounce = 136.068.043 VNĐ"
   const vndMatch = html.match(/1 Ounce\s*=\s*([\d.,]+)\s*VNĐ/);
   const vndPerOunce = vndMatch?.[1] || "";
 
-  // Detect direction from class
-  const dirMatch = html.match(/id="priceChange_vang_dola"[\s\S]*?class="(up|down|nochange)"/);
-  const direction = dirMatch?.[1] || "nochange";
-
-  if (!price) throw new Error("Could not extract gold price from CafeF");
+  if (!price) {
+    console.error("Could not find price. HTML snippet:", html.substring(0, 2000));
+    throw new Error("Could not extract gold price from CafeF");
+  }
 
   return {
     price,
-    change: (direction === "up" ? "+" : direction === "down" ? "-" : "") + change.replace(/^[+-]/, ''),
+    change,
     unit: "USD/Ounce",
     vndPerOunce,
     updatedAt: new Date().toISOString(),
