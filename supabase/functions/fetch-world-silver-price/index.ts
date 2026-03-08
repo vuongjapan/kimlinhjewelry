@@ -21,37 +21,61 @@ let cache: WorldSilverData | null = null;
 let cacheTimestamp = 0;
 let fetchInProgress = false;
 
-async function fetchFromCafeF(): Promise<WorldSilverData> {
-  const resp = await fetch(CAFEF_URL, {
+async function fetchFromFirecrawl(): Promise<WorldSilverData> {
+  const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
+  if (!apiKey) throw new Error('FIRECRAWL_API_KEY not configured');
+
+  const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+    method: 'POST',
     headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      "Accept": "text/html,application/xhtml+xml",
-      "Accept-Language": "vi-VN,vi;q=0.9,en;q=0.8",
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
     },
+    body: JSON.stringify({
+      url: CAFEF_URL,
+      formats: ['extract'],
+      extract: {
+        prompt: 'Extract the world silver price (giá bạc thế giới). Find the XAG/USD spot silver price (Bạc / Đô la Mỹ), the change amount and percentage, and the VND equivalent per ounce.',
+        schema: {
+          type: 'object',
+          properties: {
+            price: { type: 'string', description: 'Current silver price in USD per ounce, e.g. "84.476"' },
+            change: { type: 'string', description: 'Change value and percent, e.g. "0 (0%)"' },
+            direction: { type: 'string', description: 'up, down, or nochange' },
+            vndPerOunce: { type: 'string', description: 'VND per ounce value, e.g. "2,212,426"' },
+          },
+          required: ['price'],
+        },
+      },
+      waitFor: 8000,
+    }),
   });
 
-  if (!resp.ok) throw new Error(`CafeF returned ${resp.status}`);
-  const html = await resp.text();
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Firecrawl error [${response.status}]: ${errText}`);
+  }
 
-  // Extract price from: id="price_silver_world_price_price">84.476</div>
-  const priceMatch = html.match(/id="price_silver_world_price_price"[^>]*>([\d.,]+)<\/div>/);
-  const price = priceMatch?.[1] || "";
+  const result = await response.json();
+  const extractData = result.data?.extract || result.extract;
+  
+  console.log("Firecrawl extract:", JSON.stringify(extractData));
 
-  // Extract change from: id="price_silver_world_change">0 (0%)</div>
-  const changeMatch = html.match(/id="price_silver_world_change"[^>]*>([^<]+)<\/div>/);
-  const change = changeMatch?.[1]?.trim() || "0 (0%)";
+  if (!extractData?.price) throw new Error('No silver price extracted');
 
-  // Extract VND per ounce: "1 Ounce = 2,212,426 VNĐ"
-  const vndMatch = html.match(/1 Ounce\s*=\s*([\d.,]+)\s*VNĐ/);
-  const vndPerOunce = vndMatch?.[1] || "";
-
-  if (!price) throw new Error("Could not extract silver price from CafeF");
+  const direction = extractData.direction || 'nochange';
+  let change = extractData.change || '0 (0%)';
+  if (direction === 'up' && !change.startsWith('+')) {
+    change = '+' + change;
+  } else if (direction === 'down' && !change.startsWith('-')) {
+    change = '-' + change;
+  }
 
   return {
-    price,
+    price: extractData.price,
     change,
     unit: "USD/Ounce",
-    vndPerOunce,
+    vndPerOunce: extractData.vndPerOunce || '',
     updatedAt: new Date().toISOString(),
     source: "live",
   };
@@ -60,8 +84,8 @@ async function fetchFromCafeF(): Promise<WorldSilverData> {
 function triggerBackgroundRefresh() {
   if (fetchInProgress) return;
   fetchInProgress = true;
-  fetchFromCafeF()
-    .then(data => { cache = data; cacheTimestamp = Date.now(); })
+  fetchFromFirecrawl()
+    .then(data => { cache = data; cacheTimestamp = Date.now(); console.log("Silver world cache refreshed:", data.price); })
     .catch(err => console.error("Background refresh failed:", err))
     .finally(() => { fetchInProgress = false; });
 }
@@ -88,7 +112,7 @@ serve(async (req) => {
   }
 
   try {
-    const data = await fetchFromCafeF();
+    const data = await fetchFromFirecrawl();
     cache = data;
     cacheTimestamp = Date.now();
     return new Response(JSON.stringify(data), {
