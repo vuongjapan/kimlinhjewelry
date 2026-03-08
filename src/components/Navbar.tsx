@@ -56,6 +56,7 @@ const Navbar = () => {
         <div className="hidden md:flex items-center gap-6">
           <a href="#gioi-thieu" className="text-sm font-body text-muted-foreground hover:text-foreground transition-colors">Giới thiệu</a>
           <a href="#gia-vang-the-gioi" className="text-sm font-body text-muted-foreground hover:text-foreground transition-colors">Giá vàng TG</a>
+          <a href="#gia-bac-the-gioi" className="text-sm font-body text-muted-foreground hover:text-foreground transition-colors">Giá bạc TG</a>
           <a href="#gia-vang" className="text-sm font-body text-muted-foreground hover:text-foreground transition-colors">Giá vàng VN</a>
           <a href="#san-pham" className="text-sm font-body text-muted-foreground hover:text-foreground transition-colors">Sản phẩm</a>
           <a href="#kien-thuc" className="text-sm font-body text-muted-foreground hover:text-foreground transition-colors">Kiến thức</a>
