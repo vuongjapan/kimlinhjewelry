@@ -30,7 +30,7 @@ const Navbar = () => {
                 )}
               </div>
               {isAdmin && (
-                <a href="/admin" className="flex items-center gap-1 text-primary hover:underline">
+                <a href="https://kimlinhjewelry.lovable.app/admin" className="flex items-center gap-1 text-primary hover:underline">
                   <Shield className="w-3.5 h-3.5" />Admin
                 </a>
               )}
