@@ -21,11 +21,11 @@ const Index = () => {
         <HeroSection />
         <DomesticGoldPriceCard />
         <AboutSection />
+        <ProductShowcase />
         <WorldGoldPrice />
         <WorldSilverPrice />
         <DomesticSilverPriceCard />
         <BrandedGoldPriceCard />
-        <ProductShowcase />
         <InvestmentKnowledge />
         <ContactSection />
       </main>
