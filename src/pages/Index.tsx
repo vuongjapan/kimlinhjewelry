@@ -1,6 +1,7 @@
 import Navbar from '@/components/Navbar';
 import HeroSection from '@/components/HeroSection';
 import WorldGoldPrice from '@/components/WorldGoldPrice';
+import WorldSilverPrice from '@/components/WorldSilverPrice';
 import DomesticPrices from '@/components/DomesticPrices';
 import ProductShowcase from '@/components/ProductShowcase';
 import InvestmentKnowledge from '@/components/InvestmentKnowledge';
