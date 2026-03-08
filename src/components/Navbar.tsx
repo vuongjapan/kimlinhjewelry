@@ -54,10 +54,10 @@ const Navbar = () => {
           Kim Linh Jewelry
         </a>
         <div className="hidden md:flex items-center gap-6">
+          <a href="#gia-vang" className="text-sm font-body text-primary font-semibold hover:text-primary/80 transition-colors">Giá Kim Linh</a>
           <a href="#gioi-thieu" className="text-sm font-body text-muted-foreground hover:text-foreground transition-colors">Giới thiệu</a>
           <a href="#gia-vang-the-gioi" className="text-sm font-body text-muted-foreground hover:text-foreground transition-colors">Giá vàng TG</a>
           <a href="#gia-bac-the-gioi" className="text-sm font-body text-muted-foreground hover:text-foreground transition-colors">Giá bạc TG</a>
-          <a href="#gia-vang" className="text-sm font-body text-muted-foreground hover:text-foreground transition-colors">Giá vàng VN</a>
           <a href="#san-pham" className="text-sm font-body text-muted-foreground hover:text-foreground transition-colors">Sản phẩm</a>
           <a href="#kien-thuc" className="text-sm font-body text-muted-foreground hover:text-foreground transition-colors">Kiến thức</a>
           <a href="#lien-he" className="text-sm font-body text-muted-foreground hover:text-foreground transition-colors">Liên hệ</a>
