@@ -27,7 +27,7 @@ const HeroSection = () => {
   const v = (key: keyof typeof DEFAULTS) => data?.[key] || DEFAULTS[key];
 
   return (
-    <section className="relative min-h-[70vh] md:min-h-[80vh] flex items-center justify-center overflow-hidden">
+    <section className="relative min-h-[45vh] md:min-h-[80vh] flex items-center justify-center overflow-hidden">
       <div className="absolute inset-0">
         <img src={heroImage} alt="Trang sức vàng Kim Linh" className="w-full h-full object-cover" loading="eager" />
         <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/30 to-background" />
