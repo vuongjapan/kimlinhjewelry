@@ -99,6 +99,10 @@ export default {
           "0%, 100%": { boxShadow: "0 0 0 0 hsl(37 45% 60% / 0.4)" },
           "50%": { boxShadow: "0 0 0 12px hsl(37 45% 60% / 0)" },
         },
+        "bounce-slow": {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-6px)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -106,6 +110,7 @@ export default {
         "fade-in": "fade-in 0.6s ease-out forwards",
         "slide-up": "slide-up 0.8s ease-out forwards",
         "pulse-gold": "pulse-gold 2s ease-in-out infinite",
+        "bounce-slow": "bounce-slow 2s ease-in-out infinite",
       },
     },
   },
