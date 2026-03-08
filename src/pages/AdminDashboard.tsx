@@ -15,6 +15,7 @@ import AdminMapEditor from '@/components/AdminMapEditor';
 import AdminAboutEditor from '@/components/AdminAboutEditor';
 import AdminKnowledgeEditor from '@/components/AdminKnowledgeEditor';
 import AdminPriceEditor from '@/components/AdminPriceEditor';
+import AdminHeroEditor from '@/components/AdminHeroEditor';
 import { getTierLabel, getTierColor, type Profile } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 
