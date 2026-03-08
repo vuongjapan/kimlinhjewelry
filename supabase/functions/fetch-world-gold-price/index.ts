@@ -21,60 +21,61 @@ let cache: WorldGoldData | null = null;
 let cacheTimestamp = 0;
 let fetchInProgress = false;
 
-async function fetchFromCafeF(): Promise<WorldGoldData> {
-  const resp = await fetch(CAFEF_URL, {
+async function fetchFromFirecrawl(): Promise<WorldGoldData> {
+  const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
+  if (!apiKey) throw new Error('FIRECRAWL_API_KEY not configured');
+
+  const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+    method: 'POST',
     headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      "Accept": "text/html,application/xhtml+xml",
-      "Accept-Language": "vi-VN,vi;q=0.9,en;q=0.8",
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
     },
+    body: JSON.stringify({
+      url: CAFEF_URL,
+      formats: ['extract'],
+      extract: {
+        prompt: 'Extract the world gold price (giá vàng thế giới/quốc tế). Find the XAU/USD spot price which should be around 2000-6000 USD/Ounce, the change amount and percentage, and the VND equivalent per ounce.',
+        schema: {
+          type: 'object',
+          properties: {
+            price: { type: 'string', description: 'Current gold price in USD per ounce, e.g. "5,171.92"' },
+            change: { type: 'string', description: 'Change value and percent, e.g. "21.62 (0.42%)"' },
+            direction: { type: 'string', description: 'up, down, or nochange' },
+            vndPerOunce: { type: 'string', description: 'VND per ounce value, e.g. "136.068.043"' },
+          },
+          required: ['price'],
+        },
+      },
+      waitFor: 8000,
+    }),
   });
 
-  if (!resp.ok) throw new Error(`CafeF returned ${resp.status}`);
-  const html = await resp.text();
-
-  // Try multiple patterns for price extraction
-  // Pattern 1: id="price_vang_dola">5,171.92</div>
-  let priceMatch = html.match(/id=["']price_vang_dola["'][^>]*>([\d.,]+)</);
-  // Pattern 2: class="price_vang_dola">
-  if (!priceMatch) priceMatch = html.match(/class=["']price_vang_dola["'][^>]*>([\d.,]+)</);
-  // Pattern 3: Look for the price near "Vàng / Đô la Mỹ"
-  if (!priceMatch) priceMatch = html.match(/Vàng\s*\/\s*Đô la Mỹ[\s\S]{0,200}?([\d]{1,2}[,.][\d]{3}[,.]?\d*)/);
-  
-  const price = priceMatch?.[1] || "";
-  console.log("Extracted price:", price, "from match:", priceMatch?.[0]?.substring(0, 100));
-
-  // Extract change - look for change text near priceChange_vang_dola
-  let change = "0 (0%)";
-  const changeBlockMatch = html.match(/id=["']priceChange_vang_dola["'][\s\S]{0,500}/);
-  if (changeBlockMatch) {
-    // Look for numbers like "21.62 (0.42%)"
-    const numMatch = changeBlockMatch[0].match(/([\d.]+)\s*\(([\d.]+)%\)/);
-    if (numMatch) {
-      change = `${numMatch[1]} (${numMatch[2]}%)`;
-    }
-    // Detect direction
-    if (changeBlockMatch[0].includes('class="up"') || changeBlockMatch[0].includes("iconUp")) {
-      change = "+" + change;
-    } else if (changeBlockMatch[0].includes('class="down"') || changeBlockMatch[0].includes("iconDown")) {
-      change = "-" + change;
-    }
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Firecrawl error [${response.status}]: ${errText}`);
   }
 
-  // Extract VND per ounce: "1 Ounce = 136.068.043 VNĐ"
-  const vndMatch = html.match(/1 Ounce\s*=\s*([\d.,]+)\s*VNĐ/);
-  const vndPerOunce = vndMatch?.[1] || "";
+  const result = await response.json();
+  const extractData = result.data?.extract || result.extract;
+  
+  console.log("Firecrawl extract:", JSON.stringify(extractData));
 
-  if (!price) {
-    console.error("Could not find price. HTML snippet:", html.substring(0, 2000));
-    throw new Error("Could not extract gold price from CafeF");
+  if (!extractData?.price) throw new Error('No gold price extracted');
+
+  const direction = extractData.direction || 'nochange';
+  let change = extractData.change || '0 (0%)';
+  if (direction === 'up' && !change.startsWith('+')) {
+    change = '+' + change;
+  } else if (direction === 'down' && !change.startsWith('-')) {
+    change = '-' + change;
   }
 
   return {
-    price,
+    price: extractData.price,
     change,
     unit: "USD/Ounce",
-    vndPerOunce,
+    vndPerOunce: extractData.vndPerOunce || '',
     updatedAt: new Date().toISOString(),
     source: "live",
   };
@@ -83,7 +84,7 @@ async function fetchFromCafeF(): Promise<WorldGoldData> {
 function triggerBackgroundRefresh() {
   if (fetchInProgress) return;
   fetchInProgress = true;
-  fetchFromCafeF()
+  fetchFromFirecrawl()
     .then(data => { cache = data; cacheTimestamp = Date.now(); console.log("Gold world cache refreshed:", data.price); })
     .catch(err => console.error("Background refresh failed:", err))
     .finally(() => { fetchInProgress = false; });
@@ -111,7 +112,7 @@ serve(async (req) => {
   }
 
   try {
-    const data = await fetchFromCafeF();
+    const data = await fetchFromFirecrawl();
     cache = data;
     cacheTimestamp = Date.now();
     return new Response(JSON.stringify(data), {
