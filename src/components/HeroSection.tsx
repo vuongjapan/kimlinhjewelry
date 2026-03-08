@@ -1,6 +1,23 @@
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import heroImage from '@/assets/hero-jewelry.jpg';
 
 const HeroSection = () => {
+  const { data: subtitleSetting } = useQuery({
+    queryKey: ['hero-settings'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('site_settings')
+        .select('*')
+        .eq('key', 'hero_subtitle')
+        .maybeSingle();
+      return data;
+    },
+    staleTime: 60000,
+  });
+
+  const subtitle = (subtitleSetting?.value as any)?.text || 'Tiệm vàng gia đình uy tín';
+
   return (
     <section className="relative min-h-[70vh] md:min-h-[80vh] flex items-center justify-center overflow-hidden">
       <div className="absolute inset-0">
