@@ -36,7 +36,7 @@ const HeroSection = () => {
         <p className="text-sm md:text-base tracking-[0.3em] uppercase text-muted-foreground mb-4 font-body">
           {v('subtitle')}
         </p>
-        <h1 className="text-5xl md:text-7xl lg:text-8xl font-display font-bold mb-6 gold-text leading-tight drop-shadow-lg">
+        <h1 className="text-5xl md:text-7xl lg:text-8xl font-display font-bold mb-6 text-foreground leading-tight drop-shadow-lg">
           {v('title')}
         </h1>
         <p className="text-base md:text-lg text-foreground/80 font-body max-w-xl mx-auto leading-relaxed mb-8">
