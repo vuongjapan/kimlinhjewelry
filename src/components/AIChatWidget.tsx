@@ -147,6 +147,7 @@ const AIChatWidget = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isLightMode, setIsLightMode] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
