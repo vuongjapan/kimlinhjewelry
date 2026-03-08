@@ -38,7 +38,7 @@ const AdminDashboard = () => {
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [newProduct, setNewProduct] = useState<Omit<Product, 'id'> | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [activeSection, setActiveSection] = useState<'products' | 'customers' | 'map' | 'about' | 'knowledge' | 'prices'>('products');
+  const [activeSection, setActiveSection] = useState<'products' | 'customers' | 'map' | 'about' | 'knowledge' | 'prices' | 'hero'>('products');
   const [customers, setCustomers] = useState<Profile[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [editCustomer, setEditCustomer] = useState<Profile | null>(null);
