@@ -149,6 +149,9 @@ const AdminDashboard = () => {
             <Button variant={activeSection === 'prices' ? 'default' : 'outline'} size="sm" onClick={() => setActiveSection('prices')}>
               <DollarSign className="w-4 h-4 mr-1" />Giá
             </Button>
+            <Button variant={activeSection === 'hero' ? 'default' : 'outline'} size="sm" onClick={() => setActiveSection('hero')}>
+              <Image className="w-4 h-4 mr-1" />Hero
+            </Button>
             <Button variant={activeSection === 'map' ? 'default' : 'outline'} size="sm" onClick={() => setActiveSection('map')}>
               <MapPin className="w-4 h-4 mr-1" />Bản đồ
             </Button>
