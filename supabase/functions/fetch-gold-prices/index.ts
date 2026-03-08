@@ -20,12 +20,7 @@ const ROW_CONFIG = [
   { row: 4, type: "Bạc", category: "Bạc" },
 ];
 
-const FALLBACK_PRICES = [
-  { type: "Nhẫn Ép Vỉ 9999", buy: "16.500", sell: "16.750", category: "Vàng ta" },
-  { type: "Trang Sức Vàng", buy: "16.450", sell: "16.700", category: "Trang sức" },
-  { type: "Vàng Tây 10K", buy: "6.380", sell: "7.500", category: "Vàng tây" },
-  { type: "Bạc", buy: "160", sell: "260", category: "Bạc" },
-];
+// No fallback prices — return error if API fails
 
 function formatPrice(raw: string): string {
   const num = parseInt(raw, 10);
