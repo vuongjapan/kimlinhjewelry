@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Menu, X } from 'lucide-react';
 
 const navLinks = [
-  { href: '#gia-vang', label: 'Giá vàng', highlight: true },
+  { href: '#gia-vang', label: 'Giá Vàng Bạc tại Kim Linh', highlight: true },
   { href: '#gia-bac', label: 'Giá bạc TH', highlight: true },
   { href: '#gia-vang-thuong-hieu', label: 'Vàng TH', highlight: true },
   { href: '#gioi-thieu', label: 'Giới thiệu' },
