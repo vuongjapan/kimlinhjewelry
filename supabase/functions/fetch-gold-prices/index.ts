@@ -20,12 +20,7 @@ const ROW_CONFIG = [
   { row: 4, type: "Bạc", category: "Bạc" },
 ];
 
-const FALLBACK_PRICES = [
-  { type: "Nhẫn Ép Vỉ 9999", buy: "16.500", sell: "16.750", category: "Vàng ta" },
-  { type: "Trang Sức Vàng", buy: "16.450", sell: "16.700", category: "Trang sức" },
-  { type: "Vàng Tây 10K", buy: "6.380", sell: "7.500", category: "Vàng tây" },
-  { type: "Bạc", buy: "160", sell: "260", category: "Bạc" },
-];
+// No fallback prices — return error if API fails
 
 function formatPrice(raw: string): string {
   const num = parseInt(raw, 10);
@@ -77,10 +72,13 @@ serve(async (req) => {
           buyRaw = adjustBuyPrice(buyRaw, -300);
         }
 
+        const buyNum = parseInt(buyRaw, 10);
+        const sellNum = parseInt(sellRaw, 10);
+
         return {
           type: cfg.type,
-          buy: formatPrice(buyRaw),
-          sell: formatPrice(sellRaw),
+          buy: (isNaN(buyNum) || buyNum <= 0) ? "Đang cập nhật" : formatPrice(buyRaw),
+          sell: (isNaN(sellNum) || sellNum <= 0) ? "Đang cập nhật" : formatPrice(sellRaw),
           category: cfg.category,
         };
       });
@@ -99,11 +97,9 @@ serve(async (req) => {
     console.error("Error fetching gold prices:", error);
     return new Response(
       JSON.stringify({
-        prices: FALLBACK_PRICES,
-        updatedAt: new Date().toISOString(),
-        source: "reference",
+        error: "Không thể tải giá vàng từ nguồn",
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
