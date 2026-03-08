@@ -6,7 +6,7 @@ const DEFAULTS = {
   subtitle: 'Tiệm vàng gia đình uy tín',
   title: 'Kim Linh Jewelry',
   description: 'Uy tín – Minh bạch – Tận tâm. Chuyên vàng tây theo mẫu, phù hợp đeo hàng ngày. Giá cập nhật theo thị trường, tư vấn rõ ràng, không ép mua.',
-  btn1: 'Xem giá vàng',
+  btn1: 'Xem giá vàng bạc tại Kim Linh',
   btn2: 'Xem sản phẩm',
 };
 
