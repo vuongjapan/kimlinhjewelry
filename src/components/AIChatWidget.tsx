@@ -100,7 +100,7 @@ async function streamChat(
   const resp = await fetch(CHAT_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, visitor_id: VISITOR_ID }),
   });
 
   if (resp.status === 429) { onError('Hệ thống đang bận, vui lòng thử lại sau.'); return; }
