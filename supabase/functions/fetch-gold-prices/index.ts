@@ -94,11 +94,9 @@ serve(async (req) => {
     console.error("Error fetching gold prices:", error);
     return new Response(
       JSON.stringify({
-        prices: FALLBACK_PRICES,
-        updatedAt: new Date().toISOString(),
-        source: "reference",
+        error: "Không thể tải giá vàng từ nguồn",
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
