@@ -37,9 +37,6 @@ const AboutSection = () => {
     <section id="gioi-thieu" className="section-padding bg-background">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-10">
-          <p className="text-sm tracking-[0.2em] uppercase text-muted-foreground mb-2 font-body">
-            Về chúng tôi
-          </p>
           <h2 className="text-3xl md:text-4xl font-display font-semibold gold-text">
             Giới Thiệu Về Kim Linh Jewelry
           </h2>
