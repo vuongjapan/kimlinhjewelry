@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { MessageCircle, X, Send, Loader2, Minimize2, Wifi, WifiOff } from 'lucide-react';
+import { MessageCircle, X, Send, Loader2, Minimize2, Wifi, WifiOff, RotateCcw } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
@@ -293,9 +293,23 @@ const AIChatWidget = () => {
             </p>
           </div>
         </div>
-        <button onClick={() => setIsOpen(false)} className="p-1.5 rounded-md hover:bg-secondary" aria-label="Thu gọn">
-          <Minimize2 className="w-4 h-4 text-muted-foreground" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => {
+              setMessages([{ role: 'assistant', content: GREETING }]);
+              setInput('');
+              setIsLoading(false);
+            }}
+            className="p-1.5 rounded-md hover:bg-secondary"
+            aria-label="Cuộc trò chuyện mới"
+            title="Bắt đầu cuộc trò chuyện mới"
+          >
+            <RotateCcw className="w-4 h-4 text-muted-foreground" />
+          </button>
+          <button onClick={() => setIsOpen(false)} className="p-1.5 rounded-md hover:bg-secondary" aria-label="Thu gọn">
+            <Minimize2 className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
       </div>
 
       {/* Messages */}
