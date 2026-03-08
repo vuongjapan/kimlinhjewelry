@@ -24,6 +24,7 @@ const Index = () => {
         <WorldGoldPrice />
         <WorldSilverPrice />
         <DomesticSilverPriceCard />
+        <BrandedGoldPriceCard />
         <ProductShowcase />
         <InvestmentKnowledge />
         <ContactSection />
