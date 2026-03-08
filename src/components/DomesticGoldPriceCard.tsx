@@ -13,7 +13,7 @@ const DomesticGoldPriceCard = () => {
         <div className="flex items-center justify-between mb-3">
           <div>
             <h2 className="text-lg md:text-2xl font-display font-bold gold-text leading-tight">
-              🪙 Giá Vàng tại Kim Linh
+              💎 Giá Vàng Bạc tại Kim Linh Jewelry
             </h2>
             <p className="text-[10px] md:text-xs text-muted-foreground font-body mt-0.5">
               Cập nhật tự động theo thị trường mỗi 5 phút
