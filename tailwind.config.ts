@@ -110,6 +110,7 @@ export default {
         "fade-in": "fade-in 0.6s ease-out forwards",
         "slide-up": "slide-up 0.8s ease-out forwards",
         "pulse-gold": "pulse-gold 2s ease-in-out infinite",
+        "bounce-slow": "bounce-slow 2s ease-in-out infinite",
       },
     },
   },
