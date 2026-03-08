@@ -296,11 +296,7 @@ const AIChatWidget = () => {
         </div>
         <div className="flex items-center gap-1">
           <button
-            onClick={() => {
-              setMessages([{ role: 'assistant', content: GREETING }]);
-              setInput('');
-              setIsLoading(false);
-            }}
+            onClick={() => setShowClearConfirm(true)}
             className="p-1.5 rounded-md hover:bg-secondary"
             aria-label="Cuộc trò chuyện mới"
             title="Bắt đầu cuộc trò chuyện mới"
