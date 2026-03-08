@@ -4,6 +4,7 @@ import WorldGoldPrice from '@/components/WorldGoldPrice';
 import WorldSilverPrice from '@/components/WorldSilverPrice';
 import DomesticGoldPriceCard from '@/components/DomesticGoldPriceCard';
 import DomesticSilverPriceCard from '@/components/DomesticSilverPriceCard';
+import BrandedGoldPriceCard from '@/components/BrandedGoldPriceCard';
 import ProductShowcase from '@/components/ProductShowcase';
 import InvestmentKnowledge from '@/components/InvestmentKnowledge';
 import ContactSection from '@/components/ContactSection';
