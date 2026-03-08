@@ -2,7 +2,8 @@ import Navbar from '@/components/Navbar';
 import HeroSection from '@/components/HeroSection';
 import WorldGoldPrice from '@/components/WorldGoldPrice';
 import WorldSilverPrice from '@/components/WorldSilverPrice';
-import DomesticPrices from '@/components/DomesticPrices';
+import DomesticGoldPriceCard from '@/components/DomesticGoldPriceCard';
+import DomesticSilverPriceCard from '@/components/DomesticSilverPriceCard';
 import ProductShowcase from '@/components/ProductShowcase';
 import InvestmentKnowledge from '@/components/InvestmentKnowledge';
 import ContactSection from '@/components/ContactSection';
@@ -16,11 +17,12 @@ const Index = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
       <main>
-        <DomesticPrices />
+        <DomesticGoldPriceCard />
         <HeroSection />
         <AboutSection />
         <WorldGoldPrice />
         <WorldSilverPrice />
+        <DomesticSilverPriceCard />
         <ProductShowcase />
         <InvestmentKnowledge />
         <ContactSection />
