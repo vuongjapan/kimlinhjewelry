@@ -293,9 +293,23 @@ const AIChatWidget = () => {
             </p>
           </div>
         </div>
-        <button onClick={() => setIsOpen(false)} className="p-1.5 rounded-md hover:bg-secondary" aria-label="Thu gọn">
-          <Minimize2 className="w-4 h-4 text-muted-foreground" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => {
+              setMessages([{ role: 'assistant', content: GREETING }]);
+              setInput('');
+              setIsLoading(false);
+            }}
+            className="p-1.5 rounded-md hover:bg-secondary"
+            aria-label="Cuộc trò chuyện mới"
+            title="Bắt đầu cuộc trò chuyện mới"
+          >
+            <RotateCcw className="w-4 h-4 text-muted-foreground" />
+          </button>
+          <button onClick={() => setIsOpen(false)} className="p-1.5 rounded-md hover:bg-secondary" aria-label="Thu gọn">
+            <Minimize2 className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
       </div>
 
       {/* Messages */}
