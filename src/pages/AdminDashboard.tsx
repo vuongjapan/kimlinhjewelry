@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { LogOut, Plus, Pencil, Trash2, Upload, Users, Package, MapPin, Info, BookOpen, DollarSign } from 'lucide-react';
+import { LogOut, Plus, Pencil, Trash2, Upload, Users, Package, MapPin, Info, BookOpen, DollarSign, Image } from 'lucide-react';
 import AdminMapEditor from '@/components/AdminMapEditor';
 import AdminAboutEditor from '@/components/AdminAboutEditor';
 import AdminKnowledgeEditor from '@/components/AdminKnowledgeEditor';
