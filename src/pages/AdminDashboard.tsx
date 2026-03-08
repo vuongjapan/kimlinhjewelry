@@ -246,6 +246,8 @@ const AdminDashboard = () => {
           <AdminKnowledgeEditor />
         ) : activeSection === 'prices' ? (
           <AdminPriceEditor />
+        ) : activeSection === 'hero' ? (
+          <AdminHeroEditor />
         ) : (
           <AdminMapEditor />
         )}
