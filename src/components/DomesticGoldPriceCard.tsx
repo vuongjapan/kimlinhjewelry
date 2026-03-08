@@ -30,8 +30,7 @@ const DomesticGoldPriceCard = () => {
         </div>
 
         <div className="rounded-xl border border-border/60 bg-card shadow-lg overflow-hidden">
-          <div className="px-3 md:px-4 py-2.5 bg-gradient-to-r from-yellow-500/10 to-amber-500/10 border-b border-border/40 flex items-center justify-between">
-            <h3 className="font-display font-semibold text-sm md:text-base text-foreground">🪙 Giá Vàng</h3>
+          <div className="px-3 md:px-4 py-2.5 bg-gradient-to-r from-yellow-500/10 to-amber-500/10 border-b border-border/40 flex items-center justify-end">
             {isManual && (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-body">📌 Thủ công</span>
             )}
