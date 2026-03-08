@@ -147,6 +147,7 @@ const AIChatWidget = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isLightMode, setIsLightMode] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -295,11 +296,7 @@ const AIChatWidget = () => {
         </div>
         <div className="flex items-center gap-1">
           <button
-            onClick={() => {
-              setMessages([{ role: 'assistant', content: GREETING }]);
-              setInput('');
-              setIsLoading(false);
-            }}
+            onClick={() => setShowClearConfirm(true)}
             className="p-1.5 rounded-md hover:bg-secondary"
             aria-label="Cuộc trò chuyện mới"
             title="Bắt đầu cuộc trò chuyện mới"
@@ -311,6 +308,34 @@ const AIChatWidget = () => {
           </button>
         </div>
       </div>
+
+      {/* Clear confirmation */}
+      {showClearConfirm && (
+        <div className="absolute inset-0 z-10 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 rounded-xl">
+          <div className="bg-card border border-border rounded-xl p-4 shadow-lg text-center space-y-3 max-w-[260px]">
+            <p className="text-sm font-body text-foreground">Bạn có chắc muốn xóa lịch sử trò chuyện?</p>
+            <div className="flex gap-2 justify-center">
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                className="px-3 py-1.5 rounded-lg text-sm font-body border border-border text-muted-foreground hover:bg-secondary"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={() => {
+                  setMessages([{ role: 'assistant', content: GREETING }]);
+                  setInput('');
+                  setIsLoading(false);
+                  setShowClearConfirm(false);
+                }}
+                className="px-3 py-1.5 rounded-lg text-sm font-body bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Xóa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2.5 overscroll-contain -webkit-overflow-scrolling-touch">
