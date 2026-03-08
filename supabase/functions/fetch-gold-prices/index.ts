@@ -42,17 +42,35 @@ serve(async (req) => {
   }
 
   try {
-    const response = await fetch("https://vangmlc.vn/includes/view/api_proxy.php", {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "application/json",
-        "Referer": "https://vangmlc.vn/",
-      },
-    });
+    let apiData: ApiItem[] | null = null;
+    let lastError: Error | null = null;
 
-    if (!response.ok) throw new Error(`API HTTP ${response.status}`);
-    const text = await response.text();
-    const apiData: ApiItem[] = JSON.parse(text);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        const response = await fetch("https://vangmlc.vn/includes/view/api_proxy.php", {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json",
+            "Referer": "https://vangmlc.vn/",
+          },
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        if (!response.ok) throw new Error(`API HTTP ${response.status}`);
+        const text = await response.text();
+        apiData = JSON.parse(text);
+        break;
+      } catch (e) {
+        lastError = e instanceof Error ? e : new Error(String(e));
+        console.warn(`Attempt ${attempt + 1} failed:`, lastError.message);
+        if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
+
+    if (!apiData) throw lastError || new Error("All retries failed");
 
     // Build a map: { r1c1: "16500", r1c2: "16750", ... }
     const valueMap: Record<string, string> = {};
