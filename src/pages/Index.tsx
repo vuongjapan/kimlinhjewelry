@@ -19,6 +19,7 @@ const Index = () => {
         <HeroSection />
         <AboutSection />
         <WorldGoldPrice />
+        <WorldSilverPrice />
         <DomesticPrices />
         <ProductShowcase />
         <InvestmentKnowledge />
