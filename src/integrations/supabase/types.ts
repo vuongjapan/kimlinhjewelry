@@ -76,6 +76,33 @@ export type Database = {
         }
         Relationships: []
       }
+      chat_memories: {
+        Row: {
+          created_at: string
+          id: string
+          last_conversation_at: string
+          memory: Json
+          updated_at: string
+          visitor_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_conversation_at?: string
+          memory?: Json
+          updated_at?: string
+          visitor_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_conversation_at?: string
+          memory?: Json
+          updated_at?: string
+          visitor_id?: string
+        }
+        Relationships: []
+      }
       knowledge_articles: {
         Row: {
           content: string | null

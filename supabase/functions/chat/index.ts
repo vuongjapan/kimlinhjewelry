@@ -28,6 +28,119 @@ function getSupabaseClient() {
   );
 }
 
+// ---------- Visitor Memory ----------
+async function getVisitorMemory(visitorId: string): Promise<Record<string, any>> {
+  if (!visitorId) return {};
+  try {
+    const sb = getSupabaseClient();
+    const { data } = await sb.from('chat_memories').select('memory').eq('visitor_id', visitorId).maybeSingle();
+    return (data?.memory as Record<string, any>) || {};
+  } catch (e) {
+    console.error("Memory fetch error:", e);
+    return {};
+  }
+}
+
+async function saveVisitorMemory(visitorId: string, memory: Record<string, any>): Promise<void> {
+  if (!visitorId || Object.keys(memory).length === 0) return;
+  try {
+    const sb = getSupabaseClient();
+    await sb.from('chat_memories').upsert({
+      visitor_id: visitorId,
+      memory,
+      last_conversation_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'visitor_id' });
+  } catch (e) {
+    console.error("Memory save error:", e);
+  }
+}
+
+function extractInfoFromMessages(messages: Array<{ role: string; content: string }>, existingMemory: Record<string, any>): Record<string, any> {
+  const memory = { ...existingMemory };
+  
+  for (const msg of messages) {
+    if (msg.role !== 'user') continue;
+    const text = msg.content.toLowerCase();
+    
+    // Extract name patterns
+    const namePatterns = [
+      /(?:tên\s+(?:em|tôi|mình|anh|chị)\s+(?:là|la)\s+)([^\s,.!?]+(?:\s+[^\s,.!?]+)?)/i,
+      /(?:em\s+(?:là|la|tên)\s+)([^\s,.!?]+(?:\s+[^\s,.!?]+)?)/i,
+      /(?:mình\s+(?:là|la|tên)\s+)([^\s,.!?]+(?:\s+[^\s,.!?]+)?)/i,
+      /(?:anh\s+(?:là|la|tên)\s+)([^\s,.!?]+(?:\s+[^\s,.!?]+)?)/i,
+      /(?:chị\s+(?:là|la|tên)\s+)([^\s,.!?]+(?:\s+[^\s,.!?]+)?)/i,
+      /(?:gọi\s+(?:em|tôi|mình)\s+(?:là|la)\s+)([^\s,.!?]+(?:\s+[^\s,.!?]+)?)/i,
+    ];
+    
+    for (const pattern of namePatterns) {
+      const match = msg.content.match(pattern);
+      if (match?.[1]) {
+        const name = match[1].trim();
+        if (name.length >= 2 && name.length <= 30) {
+          memory.name = name;
+        }
+      }
+    }
+    
+    // Extract interests
+    if (text.includes('nhẫn cưới') || text.includes('nhan cuoi')) {
+      memory.interest_wedding = true;
+    }
+    if (text.includes('đầu tư') || text.includes('dau tu')) {
+      memory.interest_investment = true;
+    }
+    if (text.includes('quà') || text.includes('tặng')) {
+      memory.interest_gift = true;
+    }
+    if (text.includes('vàng tây') || text.includes('10k') || text.includes('14k') || text.includes('18k')) {
+      memory.interest_gold_western = true;
+    }
+    if (text.includes('9999') || text.includes('24k') || text.includes('sjc')) {
+      memory.interest_gold_pure = true;
+    }
+    if (text.includes('bạc')) {
+      memory.interest_silver = true;
+    }
+    
+    // Extract phone if shared
+    const phoneMatch = msg.content.match(/(?:0\d{9,10})/);
+    if (phoneMatch) {
+      memory.phone = phoneMatch[0];
+    }
+  }
+  
+  // Track visit count
+  memory.visit_count = (memory.visit_count || 0) + 1;
+  memory.last_visit = getCurrentDate();
+  
+  return memory;
+}
+
+function buildMemoryContext(memory: Record<string, any>): string {
+  if (!memory || Object.keys(memory).length === 0) return '';
+  
+  let ctx = '\n\n--- THÔNG TIN KHÁCH HÀNG (từ các cuộc trò chuyện trước) ---\n';
+  
+  if (memory.name) ctx += `- Tên khách: ${memory.name}\n`;
+  if (memory.phone) ctx += `- SĐT: ${memory.phone}\n`;
+  if (memory.visit_count > 1) ctx += `- Đã trò chuyện ${memory.visit_count} lần\n`;
+  if (memory.last_visit) ctx += `- Lần ghé gần nhất: ${memory.last_visit}\n`;
+  
+  const interests: string[] = [];
+  if (memory.interest_wedding) interests.push('nhẫn cưới');
+  if (memory.interest_investment) interests.push('đầu tư vàng');
+  if (memory.interest_gift) interests.push('mua quà tặng');
+  if (memory.interest_gold_western) interests.push('vàng tây');
+  if (memory.interest_gold_pure) interests.push('vàng 9999/SJC');
+  if (memory.interest_silver) interests.push('bạc');
+  if (interests.length > 0) ctx += `- Quan tâm: ${interests.join(', ')}\n`;
+  
+  ctx += `Hãy sử dụng thông tin này để tư vấn tự nhiên hơn. Nếu biết tên khách, hãy xưng hô bằng tên. Ví dụ: "Dạ, anh/chị [Tên] ơi..."\n---`;
+  
+  return ctx;
+}
+
 async function fetchManualPrices(type: 'gold' | 'silver'): Promise<string | null> {
   const cacheRef = type === 'gold' ? manualGoldCache : manualSilverCache;
   const now = Date.now();
@@ -169,30 +282,40 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { messages } = await req.json();
+    const { messages, visitor_id } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
     const currentDate = getCurrentDate();
     const currentTime = getCurrentTime();
 
-    // Fetch manual prices first (they take priority)
-    const [manualGold, manualSilver, autoGold, autoSilver] = await Promise.all([
+    // Fetch memory + prices in parallel
+    const [existingMemory, manualGold, manualSilver, autoGold, autoSilver] = await Promise.all([
+      getVisitorMemory(visitor_id || ''),
       fetchManualPrices('gold'),
       fetchManualPrices('silver'),
       fetchGoldPrices(),
       fetchSilverPrices(),
     ]);
 
-    // Manual prices override auto prices
+    // Extract new info from current messages and save
+    const updatedMemory = extractInfoFromMessages(messages, existingMemory);
+    // Save memory in background (don't block response)
+    if (visitor_id) {
+      saveVisitorMemory(visitor_id, updatedMemory).catch(console.error);
+    }
+
     const goldData = manualGold || autoGold;
     const silverData = manualSilver || autoSilver;
+    const memoryContext = buildMemoryContext(existingMemory);
 
     const SYSTEM_PROMPT = `Bạn là trợ lý tư vấn của tiệm vàng Kim Linh Jewelry – tiệm vàng gia đình uy tín tại Sầm Sơn, Thanh Hóa.
 Ngày: ${currentDate}. Giờ: ${currentTime}.
 
 PHONG CÁCH:
 - Lịch sự, nhẹ nhàng, tự nhiên như người thật, tinh tế kiểu Nhật. Xưng "em", gọi khách "anh/chị".
+- Nếu biết tên khách hàng, hãy gọi tên thân thiện. Ví dụ: "Dạ, anh Minh ơi..." hoặc "Chị Lan ơi..."
+- Nếu khách quay lại, hãy chào đón nồng nhiệt: "Dạ, rất vui được gặp lại anh/chị..."
 - Mở đầu: "Dạ," hoặc "Theo cập nhật hôm nay,"
 - Kết thúc ngắn gọn, không lặp lại thông tin.
 - Không bán hàng ép buộc, không phóng đại.
@@ -220,12 +343,17 @@ LOGIC:
 - "đầu tư" → ưu/nhược điểm ngắn gọn, nhắc tham khảo
 - Ngoài phạm vi → "Dạ, câu hỏi này nằm ngoài phạm vi hỗ trợ của em ạ."
 
+GHI NHỚ KHÁCH HÀNG:
+- Nếu khách giới thiệu tên, hãy ghi nhớ và sử dụng tên trong suốt cuộc trò chuyện.
+- Nếu khách hỏi "em còn nhớ tên anh/chị không" → trả lời tên nếu biết.
+- Tận dụng thông tin trước đó để tư vấn phù hợp hơn (ví dụ: khách từng hỏi nhẫn cưới → gợi ý khi có dịp).
+
 QUY TẮC:
 1. Hotline/Zalo: 098 661 7939
 2. Giá chỉ mang tính tham khảo
 3. Địa chỉ: Số 50 Nguyễn Thị Minh Khai, phường Trường Sơn, Sầm Sơn, Thanh Hóa
 4. Giờ làm việc: T2–CN, 8:00–17:00
-5. Không lưu/yêu cầu thông tin cá nhân`;
+5. Không lưu/yêu cầu thông tin cá nhân nhạy cảm`;
 
     const priceContext = `\n\n--- DỮ LIỆU GIÁ CẬP NHẬT ${currentDate} ${currentTime} ---\n${goldData}\n${silverData}Lưu ý: Giá chỉ mang tính tham khảo.\n---`;
 
@@ -238,7 +366,7 @@ QUY TẮC:
       body: JSON.stringify({
         model: "google/gemini-2.5-flash-lite",
         messages: [
-          { role: "system", content: SYSTEM_PROMPT + priceContext },
+          { role: "system", content: SYSTEM_PROMPT + memoryContext + priceContext },
           ...messages,
         ],
         stream: true,
