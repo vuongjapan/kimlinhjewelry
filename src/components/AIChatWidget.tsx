@@ -10,6 +10,18 @@ const SILVER_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-silv
 const AUTH_HEADER = { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` };
 const CACHE_TTL = 90_000;
 
+// ---------- Visitor ID (persistent across sessions) ----------
+function getVisitorId(): string {
+  const KEY = 'kimlinh_visitor_id';
+  let id = localStorage.getItem(KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(KEY, id);
+  }
+  return id;
+}
+const VISITOR_ID = getVisitorId();
+
 const PLACEHOLDERS = [
   'Dạ, em cảm ơn anh/chị đã quan tâm đến tiệm vàng gia đình em ạ, em xin phép kiểm tra thông tin mới nhất để gửi mình ngay ạ…',
   'Dạ, em cảm ơn anh/chị đã tin tưởng tiệm vàng gia đình em ạ, em kiểm tra dữ liệu mới nhất và phản hồi mình ngay ạ…',
