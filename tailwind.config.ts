@@ -99,6 +99,10 @@ export default {
           "0%, 100%": { boxShadow: "0 0 0 0 hsl(37 45% 60% / 0.4)" },
           "50%": { boxShadow: "0 0 0 12px hsl(37 45% 60% / 0)" },
         },
+        "bounce-slow": {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-6px)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
