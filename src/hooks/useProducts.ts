@@ -36,6 +36,8 @@ export const useProducts = (category?: ProductCategory) => {
       if (error) throw error;
       return data as Product[];
     },
+    staleTime: 5 * 60 * 1000, // 5 phút — tránh refetch không cần thiết
+    gcTime: 15 * 60 * 1000,
   });
 };
 
