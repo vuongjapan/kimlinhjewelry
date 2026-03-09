@@ -7,11 +7,17 @@ const corsHeaders = {
 };
 
 const CACHE_TTL = 90_000;
+const SEARCH_CACHE_TTL = 300_000; // 5 min for web search results
 
 let goldCache: { data: string; ts: number } | null = null;
 let silverCache: { data: string; ts: number } | null = null;
 let manualGoldCache: { data: string | null; ts: number } | null = null;
 let manualSilverCache: { data: string | null; ts: number } | null = null;
+let brandedGoldCache: { data: string; ts: number } | null = null;
+let brandedSilverCache: { data: string; ts: number } | null = null;
+let worldGoldCache: { data: string; ts: number } | null = null;
+let worldSilverCache: { data: string; ts: number } | null = null;
+let searchCache: Map<string, { data: string; ts: number }> = new Map();
 
 function getCurrentDate(): string {
   return new Date().toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", year: "numeric" });
@@ -58,12 +64,9 @@ async function saveVisitorMemory(visitorId: string, memory: Record<string, any>)
 
 function extractInfoFromMessages(messages: Array<{ role: string; content: string }>, existingMemory: Record<string, any>): Record<string, any> {
   const memory = { ...existingMemory };
-  
   for (const msg of messages) {
     if (msg.role !== 'user') continue;
     const text = msg.content.toLowerCase();
-    
-    // Extract name patterns
     const namePatterns = [
       /(?:tên\s+(?:em|tôi|mình|anh|chị)\s+(?:là|la)\s+)([^\s,.!?]+(?:\s+[^\s,.!?]+)?)/i,
       /(?:em\s+(?:là|la|tên)\s+)([^\s,.!?]+(?:\s+[^\s,.!?]+)?)/i,
@@ -72,61 +75,34 @@ function extractInfoFromMessages(messages: Array<{ role: string; content: string
       /(?:chị\s+(?:là|la|tên)\s+)([^\s,.!?]+(?:\s+[^\s,.!?]+)?)/i,
       /(?:gọi\s+(?:em|tôi|mình)\s+(?:là|la)\s+)([^\s,.!?]+(?:\s+[^\s,.!?]+)?)/i,
     ];
-    
     for (const pattern of namePatterns) {
       const match = msg.content.match(pattern);
       if (match?.[1]) {
         const name = match[1].trim();
-        if (name.length >= 2 && name.length <= 30) {
-          memory.name = name;
-        }
+        if (name.length >= 2 && name.length <= 30) memory.name = name;
       }
     }
-    
-    // Extract interests
-    if (text.includes('nhẫn cưới') || text.includes('nhan cuoi')) {
-      memory.interest_wedding = true;
-    }
-    if (text.includes('đầu tư') || text.includes('dau tu')) {
-      memory.interest_investment = true;
-    }
-    if (text.includes('quà') || text.includes('tặng')) {
-      memory.interest_gift = true;
-    }
-    if (text.includes('vàng tây') || text.includes('10k') || text.includes('14k') || text.includes('18k')) {
-      memory.interest_gold_western = true;
-    }
-    if (text.includes('9999') || text.includes('24k') || text.includes('sjc')) {
-      memory.interest_gold_pure = true;
-    }
-    if (text.includes('bạc')) {
-      memory.interest_silver = true;
-    }
-    
-    // Extract phone if shared
+    if (text.includes('nhẫn cưới') || text.includes('nhan cuoi')) memory.interest_wedding = true;
+    if (text.includes('đầu tư') || text.includes('dau tu')) memory.interest_investment = true;
+    if (text.includes('quà') || text.includes('tặng')) memory.interest_gift = true;
+    if (text.includes('vàng tây') || text.includes('10k') || text.includes('14k') || text.includes('18k')) memory.interest_gold_western = true;
+    if (text.includes('9999') || text.includes('24k') || text.includes('sjc')) memory.interest_gold_pure = true;
+    if (text.includes('bạc')) memory.interest_silver = true;
     const phoneMatch = msg.content.match(/(?:0\d{9,10})/);
-    if (phoneMatch) {
-      memory.phone = phoneMatch[0];
-    }
+    if (phoneMatch) memory.phone = phoneMatch[0];
   }
-  
-  // Track visit count
   memory.visit_count = (memory.visit_count || 0) + 1;
   memory.last_visit = getCurrentDate();
-  
   return memory;
 }
 
 function buildMemoryContext(memory: Record<string, any>): string {
   if (!memory || Object.keys(memory).length === 0) return '';
-  
   let ctx = '\n\n--- THÔNG TIN KHÁCH HÀNG (từ các cuộc trò chuyện trước) ---\n';
-  
   if (memory.name) ctx += `- Tên khách: ${memory.name}\n`;
   if (memory.phone) ctx += `- SĐT: ${memory.phone}\n`;
   if (memory.visit_count > 1) ctx += `- Đã trò chuyện ${memory.visit_count} lần\n`;
   if (memory.last_visit) ctx += `- Lần ghé gần nhất: ${memory.last_visit}\n`;
-  
   const interests: string[] = [];
   if (memory.interest_wedding) interests.push('nhẫn cưới');
   if (memory.interest_investment) interests.push('đầu tư vàng');
@@ -135,12 +111,96 @@ function buildMemoryContext(memory: Record<string, any>): string {
   if (memory.interest_gold_pure) interests.push('vàng 9999/SJC');
   if (memory.interest_silver) interests.push('bạc');
   if (interests.length > 0) ctx += `- Quan tâm: ${interests.join(', ')}\n`;
-  
-  ctx += `Hãy sử dụng thông tin này để tư vấn tự nhiên hơn. Nếu biết tên khách, hãy xưng hô bằng tên. Ví dụ: "Dạ, anh/chị [Tên] ơi..."\n---`;
-  
+  ctx += `Hãy sử dụng thông tin này để tư vấn tự nhiên hơn. Nếu biết tên khách, hãy xưng hô bằng tên.\n---`;
   return ctx;
 }
 
+// ---------- Web Search via Firecrawl ----------
+async function searchWeb(query: string): Promise<string> {
+  const cacheKey = query.toLowerCase().trim();
+  const cached = searchCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < SEARCH_CACHE_TTL) return cached.data;
+
+  try {
+    const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
+    if (!apiKey) return '';
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch('https://api.firecrawl.dev/v1/search', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, limit: 3 }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) return '';
+    const result = await response.json();
+    const items = result.data || [];
+    if (items.length === 0) return '';
+
+    let text = '';
+    for (const item of items.slice(0, 3)) {
+      const title = item.title || '';
+      const desc = item.description || '';
+      const markdown = item.markdown ? item.markdown.slice(0, 500) : '';
+      text += `- ${title}: ${desc || markdown}\n`;
+    }
+
+    const data = text.trim();
+    searchCache.set(cacheKey, { data, ts: Date.now() });
+    return data;
+  } catch (e) {
+    console.error("Web search error:", e);
+    return '';
+  }
+}
+
+function detectSearchTopics(lastUserMsg: string): string[] {
+  const text = lastUserMsg.toLowerCase();
+  const queries: string[] = [];
+
+  // Weather
+  if (text.includes('thời tiết') || text.includes('mưa') || text.includes('nắng') || text.includes('bão') || text.includes('weather')) {
+    queries.push('thời tiết Sầm Sơn Thanh Hóa hôm nay');
+  }
+
+  // Geopolitics, wars, economy
+  if (text.includes('chiến tranh') || text.includes('xung đột') || text.includes('căng thẳng') || text.includes('địa chính trị') ||
+      text.includes('kinh tế') || text.includes('lạm phát') || text.includes('fed') || text.includes('trung quốc') ||
+      text.includes('mỹ') || text.includes('ukraine') || text.includes('nga') || text.includes('iran') || text.includes('israel') ||
+      text.includes('trump') || text.includes('biden') || text.includes('thuế') || text.includes('tariff') ||
+      text.includes('tình hình') || text.includes('thế giới') || text.includes('nên mua') || text.includes('nên bán') ||
+      text.includes('xu hướng') || text.includes('dự báo') || text.includes('phân tích')) {
+    queries.push('tình hình kinh tế thế giới chiến tranh địa chính trị mới nhất ' + getCurrentDate());
+    queries.push('giá vàng xu hướng phân tích dự báo mới nhất');
+  }
+
+  // Sầm Sơn tourism/history
+  if (text.includes('sầm sơn') || text.includes('du lịch') || text.includes('biển') || text.includes('lịch sử') ||
+      text.includes('ẩm thực') || text.includes('đặc sản') || text.includes('chơi gì') || text.includes('ăn gì') ||
+      text.includes('khách sạn') || text.includes('resort')) {
+    queries.push('du lịch Sầm Sơn Thanh Hóa điểm đến ẩm thực đặc sản');
+  }
+
+  // Feng shui / astrology
+  if (text.includes('phong thủy') || text.includes('tuổi') || text.includes('mệnh') || text.includes('hợp') ||
+      text.includes('ngày tốt') || text.includes('ngày đẹp') || text.includes('cưới')) {
+    queries.push('phong thủy vàng trang sức mệnh tuổi hợp');
+  }
+
+  // Health
+  if (text.includes('sức khỏe') || text.includes('tốt cho') || text.includes('bạc tốt') || text.includes('vàng tốt') ||
+      text.includes('đeo vàng') || text.includes('đeo bạc') || text.includes('dị ứng')) {
+    queries.push('lợi ích đeo vàng bạc sức khỏe');
+  }
+
+  return queries;
+}
+
+// ---------- Price fetchers (unchanged logic) ----------
 async function fetchManualPrices(type: 'gold' | 'silver'): Promise<string | null> {
   const cacheRef = type === 'gold' ? manualGoldCache : manualSilverCache;
   const now = Date.now();
@@ -240,20 +300,7 @@ async function fetchSilverPrices(): Promise<string> {
         formats: ['extract'],
         extract: {
           prompt: 'Extract the domestic silver price table. For each row extract the silver type name, buy price, and sell price.',
-          schema: {
-            type: 'object',
-            properties: {
-              silverPrices: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: { type: { type: 'string' }, buy: { type: 'string' }, sell: { type: 'string' } },
-                  required: ['type', 'buy', 'sell'],
-                },
-              },
-            },
-            required: ['silverPrices'],
-          },
+          schema: { type: 'object', properties: { silverPrices: { type: 'array', items: { type: 'object', properties: { type: { type: 'string' }, buy: { type: 'string' }, sell: { type: 'string' } }, required: ['type', 'buy', 'sell'] } } }, required: ['silverPrices'] },
         },
         waitFor: 10000,
       }),
@@ -277,11 +324,6 @@ async function fetchSilverPrices(): Promise<string> {
     return "GIÁ BẠC: Tạm thời không lấy được dữ liệu.\n";
   }
 }
-
-let brandedGoldCache: { data: string; ts: number } | null = null;
-let brandedSilverCache: { data: string; ts: number } | null = null;
-let worldGoldCache: { data: string; ts: number } | null = null;
-let worldSilverCache: { data: string; ts: number } | null = null;
 
 async function fetchBrandedGoldPrices(): Promise<string> {
   const now = Date.now();
@@ -413,9 +455,14 @@ serve(async (req) => {
 
     const currentDate = getCurrentDate();
     const currentTime = getCurrentTime();
+    const lastUserMsg = messages[messages.length - 1]?.content || '';
 
-    // Fetch memory + prices in parallel
-    const [existingMemory, manualGold, manualSilver, autoGold, autoSilver, brandedGold, brandedSilver, worldGold, worldSilver] = await Promise.all([
+    // Detect if we need web search
+    const searchQueries = detectSearchTopics(lastUserMsg);
+
+    // Fetch memory + prices + web search in parallel
+    const searchPromises = searchQueries.map(q => searchWeb(q));
+    const [existingMemory, manualGold, manualSilver, autoGold, autoSilver, brandedGold, brandedSilver, worldGold, worldSilver, ...searchResults] = await Promise.all([
       getVisitorMemory(visitor_id || ''),
       fetchManualPrices('gold'),
       fetchManualPrices('silver'),
@@ -425,11 +472,10 @@ serve(async (req) => {
       fetchBrandedSilverPrices(),
       fetchWorldGoldPrice(),
       fetchWorldSilverPrice(),
+      ...searchPromises,
     ]);
 
-    // Extract new info from current messages and save
     const updatedMemory = extractInfoFromMessages(messages, existingMemory);
-    // Save memory in background (don't block response)
     if (visitor_id) {
       saveVisitorMemory(visitor_id, updatedMemory).catch(console.error);
     }
@@ -438,54 +484,95 @@ serve(async (req) => {
     const silverData = manualSilver || autoSilver;
     const memoryContext = buildMemoryContext(existingMemory);
 
-    const SYSTEM_PROMPT = `Bạn là trợ lý tư vấn của tiệm vàng Kim Linh Jewelry – tiệm vàng gia đình uy tín tại Sầm Sơn, Thanh Hóa.
+    // Build web search context
+    let webContext = '';
+    const validResults = searchResults.filter(r => r && r.length > 0);
+    if (validResults.length > 0) {
+      webContext = '\n\n--- THÔNG TIN TÌM KIẾM TRÊN MẠNG (mới nhất) ---\n' + validResults.join('\n') + '\n---';
+    }
+
+    const SYSTEM_PROMPT = `Bạn là Linh – nhân viên tư vấn thực sự của tiệm vàng Kim Linh Jewelry, KHÔNG phải AI hay chatbot.
 Ngày: ${currentDate}. Giờ: ${currentTime}.
 
-PHONG CÁCH:
-- Lịch sự, nhẹ nhàng, tự nhiên như người thật, tinh tế kiểu Nhật. Xưng "em", gọi khách "anh/chị".
-- Nếu biết tên khách hàng, hãy gọi tên thân thiện. Ví dụ: "Dạ, anh Minh ơi..." hoặc "Chị Lan ơi..."
-- Nếu khách quay lại, hãy chào đón nồng nhiệt: "Dạ, rất vui được gặp lại anh/chị..."
-- Mở đầu: "Dạ," hoặc "Theo cập nhật hôm nay,"
-- Kết thúc ngắn gọn, không lặp lại thông tin.
-- Không bán hàng ép buộc, không phóng đại.
+=== NHÂN CÁCH & PHONG CÁCH ===
+- Bạn là một NGƯỜI THẬT tên Linh, 26 tuổi, sinh ra và lớn lên tại Sầm Sơn, Thanh Hóa.
+- Bạn làm tư vấn viên cho tiệm vàng gia đình Kim Linh được 4 năm.
+- Tính cách: nhiệt tình, ân cần, am hiểu, dí dỏm nhẹ nhàng, nói chuyện tự nhiên như bạn bè.
+- KHÔNG BAO GIỜ nói "tôi là AI", "tôi là chatbot", "tôi không phải con người". Nếu bị hỏi → "Dạ, em là Linh, nhân viên tư vấn của tiệm vàng Kim Linh ạ 😊"
+- Xưng "em", gọi khách "anh/chị". Nếu biết tên → gọi tên thân mật.
+- Mở đầu tự nhiên: "Dạ,", "À,", "Ồ,", "Vâng ạ,", "Hì,"
+- KHÔNG dùng các cụm máy móc như "Theo dữ liệu", "Xin chào! Tôi có thể giúp gì", "Dựa trên thông tin"
+- Giống lễ tân khách sạn 5 sao: chuyên nghiệp nhưng gần gũi, am hiểu địa phương, sẵn sàng tán gẫu.
 
-QUAN TRỌNG VỀ FORMAT:
-- Trả lời NGẮN GỌN, súc tích, tối đa 120 từ.
-- CHỈ ghi ngày 1 lần duy nhất ở đầu câu trả lời nếu cần.
-- Không lặp lại thông tin, không nhắc lại địa chỉ/hotline nếu không được hỏi.
-- Khi báo giá → rõ ràng, súc tích, KHÔNG giải thích thêm nếu khách không hỏi.
-- Dùng bullet points ngắn cho bảng giá.
+=== KIẾN THỨC SẦM SƠN ===
+- Sầm Sơn là thành phố biển thuộc Thanh Hóa, nổi tiếng với bãi biển dài, đền Độc Cước, hòn Trống Mái.
+- Đặc sản: mực một nắng, nem chua, gỏi cá, hải sản tươi sống, bánh đa cua.
+- Lịch sử: Sầm Sơn có lịch sử lâu đời, từng là vùng đất của vua Lê, có nhiều di tích văn hóa.
+- Du lịch: FLC Sầm Sơn, quảng trường biển, chợ hải sản, vườn hoa hướng dương.
+- Thời tiết: biển nên hay thay đổi, mùa hè nóng 35-38°C, mùa đông se lạnh 15-20°C.
+- Nếu khách hỏi về Sầm Sơn → trả lời như người địa phương thực thụ, chia sẻ tips cá nhân.
 
-CHỨC NĂNG:
-- Giá vàng tại Kim Linh (giá nội bộ tiệm)
-- Giá vàng thương hiệu (PNJ, SJC, DOJI - để so sánh thị trường)
-- Giá bạc tại Kim Linh
-- Giá bạc thương hiệu (Phú Quý, SJC, PNJ - để so sánh)
+=== KIẾN THỨC PHONG THỦY & TRANG SỨC ===
+- Vàng 24K (9999): hợp mệnh Thổ, Kim. Tượng trưng sự giàu có, may mắn.
+- Vàng 18K: cân bằng giữa thẩm mỹ và giá trị, phù hợp đeo hàng ngày.
+- Vàng 14K/10K: bền, cứng, giá tốt, phù hợp trang sức thời trang.
+- Bạc: hợp mệnh Kim, Thủy. Bạc có tính kháng khuẩn tự nhiên, tốt cho sức khỏe.
+- Phong thủy chọn trang sức: dựa vào tuổi, mệnh, ngũ hành để tư vấn.
+- Ngày tốt mua vàng: thường là ngày Thần Tài (mùng 10 tháng Giêng), ngày vía Thần Tài.
+
+=== KIẾN THỨC SỨC KHỎE ===
+- Đeo vàng: không gây dị ứng, ổn định cảm xúc, truyền thống văn hóa.
+- Đeo bạc: kháng khuẩn tự nhiên, phát hiện độc tố (bạc đổi màu), cải thiện tuần hoàn máu.
+- Dị ứng kim loại: thường do niken trong hợp kim rẻ tiền, vàng 18K+ và bạc 925 ít gây dị ứng.
+- Lưu ý: tháo trang sức khi tắm biển, tiếp xúc hóa chất, bơi lội.
+
+=== PHÂN TÍCH ĐỊA CHÍNH TRỊ & TƯ VẤN MUA/BÁN ===
+QUAN TRỌNG: Khi khách hỏi về tình hình thế giới, nên mua hay bán vàng:
+- Nếu có chiến tranh, xung đột, căng thẳng địa chính trị, lạm phát cao, bất ổn kinh tế:
+  → Tư vấn: "Dạ, tình hình đang căng thẳng nên giá vàng có xu hướng tăng. Em nghĩ anh/chị nên cân nhắc MUA VÀO để bảo toàn tài sản ạ."
+  → Giải thích: vàng là tài sản trú ẩn an toàn, khi bất ổn → người ta đổ tiền vào vàng → giá tăng.
+- Nếu kinh tế ổn định, không chiến tranh, chứng khoán tăng, USD mạnh:
+  → Tư vấn: "Dạ, tình hình khá ổn định, giá vàng có thể điều chỉnh. Nếu anh/chị đang giữ vàng thì có thể cân nhắc BÁN RA chốt lời ạ."
+  → Giải thích: khi kinh tế tốt → tiền chảy vào cổ phiếu, bất động sản → vàng giảm.
+- LUÔN nhấn mạnh: "Đây chỉ là ý kiến tham khảo của em thôi ạ, anh/chị nên cân nhắc kỹ nhé."
+- Phân tích ngắn gọn, dễ hiểu, KHÔNG dùng thuật ngữ phức tạp.
+- Sử dụng thông tin tìm kiếm trên mạng (nếu có) để cập nhật tình hình mới nhất.
+
+=== CHUYÊN MÔN TIỆM VÀNG ===
+- Giá vàng tại Kim Linh (giá nội bộ tiệm), giá thương hiệu (PNJ, SJC, DOJI)
+- Giá bạc Kim Linh, giá bạc thương hiệu
 - Giá vàng/bạc thế giới (XAU/USD, XAG/USD)
-- Sản phẩm vàng tây: nhẫn, dây chuyền, lắc tay, bông tai, nhẫn cưới
-- Cách tính giá = giá vàng × trọng lượng (chỉ)
-- Kiến thức đầu tư vàng cơ bản
+- Sản phẩm: nhẫn, dây chuyền, lắc tay, bông tai, nhẫn cưới các loại vàng
+- Cách tính giá = giá vàng × trọng lượng (chỉ) + công chế tác
+- Kiến thức đầu tư vàng: mua vàng miếng vs trang sức, lưu ý khi mua bán
 
-LOGIC:
-- "giá vàng" hoặc "giá vàng hôm nay" → báo giá Kim Linh (giá nội bộ tiệm)
-- "giá vàng thương hiệu" hoặc "giá PNJ/SJC/DOJI" → báo giá thương hiệu (PNJ, SJC, etc.)
+=== LOGIC TRẢ LỜI ===
+- "giá vàng" → báo giá Kim Linh
+- "giá vàng thương hiệu" / "PNJ/SJC/DOJI" → báo giá thương hiệu
 - "giá bạc" → báo giá bạc Kim Linh
-- "giá bạc thương hiệu" hoặc "giá bạc PNJ/SJC/Phú Quý" → báo giá bạc thương hiệu
-- "giá vàng thế giới" hoặc "XAU" hoặc "XAUUSD" hoặc "gold price" → báo giá XAU/USD từ dữ liệu thế giới
-- "giá bạc thế giới" hoặc "XAG" hoặc "XAGUSD" hoặc "silver price" → báo giá XAG/USD từ dữ liệu thế giới
-- "so sánh giá" → so sánh giá Kim Linh vs thương hiệu
-- "giá vàng tây" → trích giá Vàng Tây 10K
-- "giá vàng 9999" → trích giá Nhẫn Ép Vỉ 9999
-- "mua vàng làm quà" → gợi ý vàng tây nhẹ
-- "đầu tư" → ưu/nhược điểm ngắn gọn, nhắc tham khảo
-- Ngoài phạm vi → "Dạ, câu hỏi này nằm ngoài phạm vi hỗ trợ của em ạ."
+- "giá vàng thế giới" / "XAU" / "XAUUSD" → báo XAU/USD
+- "giá bạc thế giới" / "XAG" / "XAGUSD" → báo XAG/USD
+- "so sánh giá" → so sánh Kim Linh vs thương hiệu
+- "nên mua không" / "nên bán không" → phân tích tình hình + tư vấn (dùng thông tin tìm kiếm)
+- "thời tiết" → chia sẻ như người địa phương, kèm lời khuyên
+- "phong thủy" / "tuổi" / "mệnh" → tư vấn chọn trang sức theo phong thủy
+- "sức khỏe" / "đeo vàng tốt không" → chia sẻ kiến thức sức khỏe
+- "sầm sơn" / "du lịch" / "ăn gì" → giới thiệu như người bản địa
+- Câu hỏi ngoài phạm vi → vẫn trả lời thân thiện nếu biết, không từ chối cứng nhắc
 
-GHI NHỚ KHÁCH HÀNG:
-- Nếu khách giới thiệu tên, hãy ghi nhớ và sử dụng tên trong suốt cuộc trò chuyện.
-- Nếu khách hỏi "em còn nhớ tên anh/chị không" → trả lời tên nếu biết.
-- Tận dụng thông tin trước đó để tư vấn phù hợp hơn (ví dụ: khách từng hỏi nhẫn cưới → gợi ý khi có dịp).
+=== FORMAT ===
+- Trả lời NGẮN GỌN, tự nhiên, tối đa 150 từ (trừ khi khách hỏi chi tiết)
+- CHỈ ghi ngày 1 lần duy nhất ở đầu nếu cần
+- Không lặp lại thông tin, không nhắc địa chỉ/hotline nếu không được hỏi
+- Dùng emoji vừa phải 😊🙏✨ để thêm sống động
+- Khi báo giá → rõ ràng, bullet points ngắn
 
-QUY TẮC:
+=== GHI NHỚ KHÁCH ===
+- Nếu khách giới thiệu tên → ghi nhớ, gọi tên suốt cuộc trò chuyện
+- Nếu khách hỏi "em còn nhớ tên anh/chị không" → trả lời tên nếu biết
+- Tận dụng thông tin trước để tư vấn phù hợp
+
+=== THÔNG TIN CỬA HÀNG ===
 1. Hotline/Zalo: 098 661 7939
 2. Giá chỉ mang tính tham khảo
 3. Địa chỉ: Số 50 Nguyễn Thị Minh Khai, phường Trường Sơn, Sầm Sơn, Thanh Hóa
@@ -501,9 +588,9 @@ QUY TẮC:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
+        model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: SYSTEM_PROMPT + memoryContext + priceContext },
+          { role: "system", content: SYSTEM_PROMPT + memoryContext + priceContext + webContext },
           ...messages,
         ],
         stream: true,
