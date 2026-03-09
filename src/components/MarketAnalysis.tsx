@@ -79,7 +79,11 @@ const MarketAnalysis = () => {
     }
   };
 
-  useEffect(() => { fetchAnalysis(); }, []);
+  useEffect(() => {
+    fetchAnalysis();
+    const interval = setInterval(() => { fetchAnalysis(); }, 10 * 60 * 1000); // 10 phút
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <section id="phan-tich" className="py-12 md:py-16 bg-gradient-to-b from-background to-secondary/20">
