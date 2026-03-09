@@ -394,52 +394,46 @@ async function fetchBrandedSilverPrices(): Promise<string> {
   }
 }
 
+async function fetchTradingViewSymbol(symbol: string): Promise<{ close: number; changePct: number; changeAbs: number }> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const url = `https://scanner.tradingview.com/symbol?symbol=${encodeURIComponent(symbol)}&fields=close,change,change_abs`;
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error(`TradingView error ${response.status}`);
+
+    const data = await response.json();
+    if (typeof data?.close !== 'number') throw new Error(`Invalid quote payload for ${symbol}`);
+
+    return {
+      close: Number(data.close),
+      changePct: Number(data.change ?? 0),
+      changeAbs: Number(data.change_abs ?? 0),
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function formatSigned(n: number, fractionDigits = 3): string {
+  const fixed = n.toFixed(fractionDigits);
+  return n > 0 ? `+${fixed}` : fixed;
+}
+
 async function fetchWorldGoldPrice(): Promise<string> {
   const now = Date.now();
   if (worldGoldCache && now - worldGoldCache.ts < 30_000) return worldGoldCache.data;
 
   try {
-    const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
-    if (!apiKey) return worldGoldCache?.data || '';
+    const quote = await fetchTradingViewSymbol('OANDA:XAUUSD');
+    const text = `\nGIÁ VÀNG THẾ GIỚI (XAU/USD) - CẬP NHẬT MỚI NHẤT:\n- Giá: ${quote.close.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} USD/Ounce\n- Thay đổi: ${formatSigned(quote.changeAbs, 3)} (${formatSigned(quote.changePct, 2)}%)\n- Nguồn: TradingView OANDA\n`;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20_000);
-
-    const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        url: 'https://www.tradingview.com/symbols/XAUUSD/',
-        formats: ['extract'],
-        extract: {
-          prompt: 'Extract the CURRENT XAUUSD price shown on this TradingView page. Also extract daily change (value and percent) and market time text if available. Return exact values displayed.',
-          schema: {
-            type: 'object',
-            properties: {
-              price: { type: 'string' },
-              change: { type: 'string' },
-              updatedAtText: { type: 'string' },
-            },
-            required: ['price'],
-          },
-        },
-        waitFor: 2500,
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    if (!response.ok) throw new Error(`Firecrawl error ${response.status}`);
-    const result = await response.json();
-    const ext = result.data?.extract || result.extract;
-    if (!ext?.price) throw new Error('No XAUUSD price extracted');
-
-    const text = `\nGIÁ VÀNG THẾ GIỚI (XAU/USD) - CẬP NHẬT MỚI NHẤT:\n- Giá: ${ext.price} USD/Ounce\n- Thay đổi: ${ext.change || 'N/A'}\n${ext.updatedAtText ? `- Mốc thời gian: ${ext.updatedAtText}\n` : ''}`;
     worldGoldCache = { data: text, ts: now };
-    console.log('World gold (TradingView) fetched:', ext.price, ext.change || 'N/A');
+    console.log('World gold (scanner) fetched:', quote.close, quote.changeAbs, quote.changePct);
     return text;
   } catch (e) {
-    console.error('World gold TradingView fetch error:', e);
+    console.error('World gold scanner fetch error:', e);
     return worldGoldCache?.data || '';
   }
 }
@@ -449,47 +443,14 @@ async function fetchWorldSilverPrice(): Promise<string> {
   if (worldSilverCache && now - worldSilverCache.ts < 30_000) return worldSilverCache.data;
 
   try {
-    const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
-    if (!apiKey) return worldSilverCache?.data || '';
+    const quote = await fetchTradingViewSymbol('TVC:SILVER');
+    const text = `\nGIÁ BẠC THẾ GIỚI (XAG/USD) - CẬP NHẬT MỚI NHẤT:\n- Giá: ${quote.close.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} USD/Ounce\n- Thay đổi: ${formatSigned(quote.changeAbs, 4)} (${formatSigned(quote.changePct, 2)}%)\n- Nguồn: TradingView TVC:SILVER\n`;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20_000);
-
-    const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        url: 'https://www.tradingview.com/symbols/XAGUSD/',
-        formats: ['extract'],
-        extract: {
-          prompt: 'Extract the CURRENT XAGUSD price shown on this TradingView page. Also extract daily change (value and percent) and market time text if available. Return exact values displayed.',
-          schema: {
-            type: 'object',
-            properties: {
-              price: { type: 'string' },
-              change: { type: 'string' },
-              updatedAtText: { type: 'string' },
-            },
-            required: ['price'],
-          },
-        },
-        waitFor: 2500,
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    if (!response.ok) throw new Error(`Firecrawl error ${response.status}`);
-    const result = await response.json();
-    const ext = result.data?.extract || result.extract;
-    if (!ext?.price) throw new Error('No XAGUSD price extracted');
-
-    const text = `\nGIÁ BẠC THẾ GIỚI (XAG/USD) - CẬP NHẬT MỚI NHẤT:\n- Giá: ${ext.price} USD/Ounce\n- Thay đổi: ${ext.change || 'N/A'}\n${ext.updatedAtText ? `- Mốc thời gian: ${ext.updatedAtText}\n` : ''}`;
     worldSilverCache = { data: text, ts: now };
-    console.log('World silver (TradingView) fetched:', ext.price, ext.change || 'N/A');
+    console.log('World silver (scanner) fetched:', quote.close, quote.changeAbs, quote.changePct);
     return text;
   } catch (e) {
-    console.error('World silver TradingView fetch error:', e);
+    console.error('World silver scanner fetch error:', e);
     return worldSilverCache?.data || '';
   }
 }
