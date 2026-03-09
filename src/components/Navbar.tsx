@@ -25,7 +25,7 @@ const Navbar = () => {
         </a>
 
         {/* Desktop */}
-        <div className="hidden md:flex items-center gap-6">
+        <div className="hidden lg:flex items-center gap-5 flex-wrap">
           {navLinks.map((l) => (
             <a
               key={l.href}
@@ -44,7 +44,7 @@ const Navbar = () => {
         {/* Mobile hamburger */}
         <button
           onClick={() => setOpen(!open)}
-          className="md:hidden p-2 -mr-2 text-foreground"
+          className="lg:hidden p-2 -mr-2 text-foreground"
           aria-label="Menu"
         >
           {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -53,7 +53,7 @@ const Navbar = () => {
 
       {/* Mobile menu */}
       {open && (
-        <div className="md:hidden border-t border-border/50 bg-background/95 backdrop-blur-md">
+        <div className="lg:hidden border-t border-border/50 bg-background/95 backdrop-blur-md">
           <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col gap-3">
             {navLinks.map((l) => (
               <a
