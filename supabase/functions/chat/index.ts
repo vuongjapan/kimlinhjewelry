@@ -564,7 +564,7 @@ serve(async (req) => {
 
     // Fetch memory + prices + geo news + web search in parallel
     const searchPromises = searchQueries.map(q => searchWeb(q));
-    const [existingMemory, manualGold, manualSilver, autoGold, autoSilver, brandedGold, brandedSilver, worldGold, worldSilver, geoNews, ...searchResults] = await Promise.all([
+    const [existingMemory, manualGold, manualSilver, autoGold, autoSilver, brandedGold, brandedSilver, worldGold, worldSilver, geoNews, marketAnalysis, ...searchResults] = await Promise.all([
       getVisitorMemory(visitor_id || ''),
       fetchManualPrices('gold'),
       fetchManualPrices('silver'),
@@ -575,6 +575,7 @@ serve(async (req) => {
       fetchWorldGoldPrice(),
       fetchWorldSilverPrice(),
       fetchGeopoliticalNews(),
+      fetchMarketAnalysisFromDB(),
       ...searchPromises,
     ]);
 
