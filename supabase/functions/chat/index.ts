@@ -175,7 +175,16 @@ function detectSearchTopics(lastUserMsg: string): string[] {
       text.includes('tình hình') || text.includes('thế giới') || text.includes('nên mua') || text.includes('nên bán') ||
       text.includes('xu hướng') || text.includes('dự báo') || text.includes('phân tích')) {
     queries.push('tình hình kinh tế thế giới chiến tranh địa chính trị mới nhất ' + getCurrentDate());
-    queries.push('giá vàng xu hướng phân tích dự báo mới nhất');
+    queries.push('giá vàng XAU/USD xu hướng phân tích kỹ thuật dự báo tuần này');
+  }
+
+  // XAU/USD trend analysis
+  if (text.includes('xau') || text.includes('xauusd') || text.includes('giá vàng thế giới') || text.includes('gold') ||
+      text.includes('biến động') || text.includes('trend') || text.includes('kỹ thuật') || text.includes('technical') ||
+      text.includes('hỗ trợ') || text.includes('kháng cự') || text.includes('support') || text.includes('resistance') ||
+      text.includes('tăng hay giảm') || text.includes('lên hay xuống')) {
+    queries.push('XAU/USD gold price technical analysis trend forecast today ' + getCurrentDate());
+    queries.push('giá vàng thế giới phân tích kỹ thuật hỗ trợ kháng cự hôm nay');
   }
 
   // Sầm Sơn tourism/history
