@@ -14,6 +14,7 @@ const InvestmentKnowledge = () => {
         .order('sort_order');
       return data || [];
     },
+    staleTime: 10 * 60 * 1000,
   });
 
   return (
