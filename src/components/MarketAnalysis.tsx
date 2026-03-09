@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { TrendingUp, TrendingDown, Minus, RefreshCw, BarChart3, Shield, Target, Newspaper, Brain, AlertTriangle } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface KeyIndicator {
   name: string;
@@ -36,6 +37,22 @@ interface AnalysisData {
 
 const ANALYSIS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-market-analysis`;
 const AUTH_HEADER = { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` };
+const DB_CACHE_KEY = 'kl_market_analysis';
+const DB_CACHE_TTL = 10 * 60 * 1000; // 10 min
+
+// Local cache helpers
+function getLocalCache(): { data: AnalysisData; ts: number } | null {
+  try {
+    const raw = localStorage.getItem(DB_CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+function setLocalCache(data: AnalysisData) {
+  try {
+    localStorage.setItem(DB_CACHE_KEY, JSON.stringify({ data, ts: Date.now() }));
+  } catch {}
+}
 
 function getSignalIcon(signal: string) {
   const s = signal?.toLowerCase() || '';
@@ -61,45 +78,84 @@ function getIndicatorColor(signal: string) {
 const MarketAnalysis = () => {
   const [data, setData] = useState<AnalysisData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const goldTickerRef = useRef<HTMLDivElement>(null);
   const silverTickerRef = useRef<HTMLDivElement>(null);
 
-  const fetchAnalysis = async () => {
-    setLoading(true);
-    setError(null);
+  // Step 1: Load from localStorage instantly
+  // Step 2: Load from DB (fast)
+  // Step 3: Refresh from edge function in background if stale
+  const loadData = useCallback(async (forceRefresh = false) => {
+    // Try local cache first
+    const local = getLocalCache();
+    if (local?.data && !forceRefresh) {
+      setData(local.data);
+      setLoading(false);
+      // If cache is fresh enough, skip DB + edge function
+      if (Date.now() - local.ts < DB_CACHE_TTL) return;
+    }
+
+    // Try DB cache (fast query)
+    if (!forceRefresh) {
+      try {
+        const { data: dbRow } = await supabase
+          .from('market_analysis')
+          .select('analysis_data, updated_at')
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (dbRow?.analysis_data) {
+          const dbData = dbRow.analysis_data as unknown as AnalysisData;
+          setData(dbData);
+          setLocalCache(dbData);
+          setLoading(false);
+
+          // If DB data is fresh (< 30 min from cron), no need to call edge function
+          const dbAge = Date.now() - new Date(dbRow.updated_at || 0).getTime();
+          if (dbAge < 35 * 60 * 1000) return;
+        }
+      } catch (e) {
+        console.error('DB cache read failed:', e);
+      }
+    }
+
+    // Fetch fresh data from edge function (slow, runs in background)
+    setRefreshing(true);
     try {
       const res = await fetch(ANALYSIS_URL, { headers: AUTH_HEADER });
       if (!res.ok) throw new Error('Không thể tải dữ liệu');
       const result = await res.json();
       if (result.error && !result.goldPrice) throw new Error(result.error);
       setData(result);
+      setLocalCache(result);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Lỗi không xác định');
+      // Only show error if we have no data at all
+      if (!data) {
+        console.error('Market analysis fetch error:', e);
+      }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
-
-  useEffect(() => {
-    fetchAnalysis();
-    const interval = setInterval(() => { fetchAnalysis(); }, 10 * 60 * 1000);
-    return () => clearInterval(interval);
   }, []);
 
-  // TradingView widgets for real-time XAU/USD and XAG/USD
   useEffect(() => {
+    loadData();
+    const interval = setInterval(() => loadData(), 10 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [loadData]);
+
+  // TradingView widgets
+  useEffect(() => {
+    if (loading) return;
     if (goldTickerRef.current && !goldTickerRef.current.querySelector('script')) {
       const script = document.createElement('script');
       script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js';
       script.async = true;
       script.innerHTML = JSON.stringify({
-        symbol: 'OANDA:XAUUSD',
-        width: '100%',
-        isTransparent: true,
-        colorTheme: 'light',
-        locale: 'vi_VN',
+        symbol: 'OANDA:XAUUSD', width: '100%', isTransparent: true, colorTheme: 'light', locale: 'vi_VN',
       });
       goldTickerRef.current.appendChild(script);
     }
@@ -108,11 +164,7 @@ const MarketAnalysis = () => {
       script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js';
       script.async = true;
       script.innerHTML = JSON.stringify({
-        symbol: 'OANDA:XAGUSD',
-        width: '100%',
-        isTransparent: true,
-        colorTheme: 'light',
-        locale: 'vi_VN',
+        symbol: 'OANDA:XAGUSD', width: '100%', isTransparent: true, colorTheme: 'light', locale: 'vi_VN',
       });
       silverTickerRef.current.appendChild(script);
     }
@@ -135,23 +187,23 @@ const MarketAnalysis = () => {
           </p>
         </div>
 
-        {loading ? (
+        {loading && !data ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <RefreshCw className="w-8 h-8 text-primary animate-spin" />
             <p className="text-muted-foreground font-body text-sm">Đang phân tích dữ liệu thị trường...</p>
           </div>
-        ) : error ? (
-          <div className="text-center py-16">
-            <p className="text-destructive font-body mb-4">{error}</p>
-            <button onClick={fetchAnalysis} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-body text-sm hover:bg-primary/90">
-              Thử lại
-            </button>
-          </div>
         ) : data ? (
           <div className="space-y-6">
+            {/* Refreshing indicator */}
+            {refreshing && (
+              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground font-body">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                <span>Đang cập nhật dữ liệu mới...</span>
+              </div>
+            )}
+
             {/* Price Overview Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Gold Price - TradingView Widget */}
               <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-body text-muted-foreground">XAU/USD</span>
@@ -162,7 +214,6 @@ const MarketAnalysis = () => {
                 </div>
               </div>
 
-              {/* Silver Price - TradingView Widget */}
               <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-body text-muted-foreground">XAG/USD</span>
@@ -173,7 +224,6 @@ const MarketAnalysis = () => {
                 </div>
               </div>
 
-              {/* Overall Signal */}
               <div className={`rounded-xl p-5 border shadow-sm ${getSignalBg(data.signalColor)}`}>
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-body opacity-80">Tín hiệu tổng quan</span>
@@ -195,7 +245,6 @@ const MarketAnalysis = () => {
 
             {/* Two Column: Trend + Support/Resistance */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Trend Analysis */}
               <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-4">
                   <TrendingUp className="w-5 h-5 text-primary" />
@@ -204,7 +253,6 @@ const MarketAnalysis = () => {
                 <p className="font-body text-foreground/90 leading-relaxed text-sm">{data.trendAnalysis}</p>
               </div>
 
-              {/* Support/Resistance */}
               <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-4">
                   <Target className="w-5 h-5 text-primary" />
@@ -325,12 +373,12 @@ const MarketAnalysis = () => {
               <div className="flex items-center gap-3">
                 <span className="text-xs text-muted-foreground font-body">Cập nhật: {data.updatedAt}</span>
                 <button
-                  onClick={fetchAnalysis}
-                  disabled={loading}
+                  onClick={() => loadData(true)}
+                  disabled={refreshing}
                   className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
                   title="Làm mới dữ liệu"
                 >
-                  <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
                 </button>
               </div>
             </div>
