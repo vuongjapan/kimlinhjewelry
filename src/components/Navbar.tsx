@@ -8,6 +8,8 @@ const navLinks = [
   { href: '#gioi-thieu', label: 'Giới thiệu' },
   { href: '#gia-vang-the-gioi', label: 'Giá vàng TG' },
   { href: '#gia-bac-the-gioi', label: 'Giá bạc TG' },
+  { href: '#phan-tich', label: 'Phân tích AI', highlight: true },
+  { href: '#gia-bac-the-gioi', label: 'Giá bạc TG' },
   { href: '#san-pham', label: 'Sản phẩm' },
   { href: '#kien-thuc', label: 'Kiến thức' },
   { href: '#lien-he', label: 'Liên hệ' },
