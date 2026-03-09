@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getCachedPrice, setCachedPrice } from '@/lib/priceCache';
 
 export interface BrandedSilverPriceItem {
   type: string;
@@ -12,11 +13,12 @@ interface BrandedSilverPriceData {
   source: string;
 }
 
+const CACHE_KEY = 'branded_silver';
 const REFRESH_INTERVAL = 5 * 60 * 1000;
 
 export function useBrandedSilverPrices() {
-  const [data, setData] = useState<BrandedSilverPriceData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<BrandedSilverPriceData | null>(() => getCachedPrice<BrandedSilverPriceData>(CACHE_KEY));
+  const [loading, setLoading] = useState(!getCachedPrice(CACHE_KEY));
   const [error, setError] = useState<string | null>(null);
 
   const fetchPrices = useCallback(async () => {
@@ -28,10 +30,11 @@ export function useBrandedSilverPrices() {
       if (!resp.ok) throw new Error('Failed to fetch');
       const json = await resp.json();
       setData(json);
+      setCachedPrice(CACHE_KEY, json);
       setError(null);
     } catch (e) {
       console.error('Branded silver price fetch error:', e);
-      setError('Không thể tải giá bạc thương hiệu');
+      if (!data) setError('Không thể tải giá bạc thương hiệu');
     } finally {
       setLoading(false);
     }
