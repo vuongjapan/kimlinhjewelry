@@ -490,7 +490,7 @@ QUY TẮC:
 4. Giờ làm việc: T2–CN, 8:00–17:00
 5. Không lưu/yêu cầu thông tin cá nhân nhạy cảm`;
 
-    const priceContext = `\n\n--- DỮ LIỆU GIÁ CẬP NHẬT ${currentDate} ${currentTime} ---\n${goldData}\n${brandedGold}\n${silverData}\n${brandedSilver}\nLưu ý: Giá chỉ mang tính tham khảo.\n---`;
+    const priceContext = `\n\n--- DỮ LIỆU GIÁ CẬP NHẬT ${currentDate} ${currentTime} ---\n${goldData}\n${brandedGold}\n${silverData}\n${brandedSilver}\n${worldGold}\n${worldSilver}\nLưu ý: Giá chỉ mang tính tham khảo.\n---`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
