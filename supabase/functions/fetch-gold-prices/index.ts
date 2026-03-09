@@ -45,10 +45,10 @@ serve(async (req) => {
     let apiData: ApiItem[] | null = null;
     let lastError: Error | null = null;
 
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 15000);
+        const timeout = setTimeout(() => controller.abort(), 25000);
         const response = await fetch("https://vangmlc.vn/includes/view/api_proxy.php", {
           headers: {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -66,7 +66,7 @@ serve(async (req) => {
       } catch (e) {
         lastError = e instanceof Error ? e : new Error(String(e));
         console.warn(`Attempt ${attempt + 1} failed:`, lastError.message);
-        if (attempt < 1) await new Promise(r => setTimeout(r, 500));
+        if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
       }
     }
 
