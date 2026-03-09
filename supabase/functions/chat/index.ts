@@ -393,17 +393,23 @@ QUAN TRỌNG VỀ FORMAT:
 - Dùng bullet points ngắn cho bảng giá.
 
 CHỨC NĂNG:
-- Giá vàng trong nước (SJC, 24K/9999, 18K, 14K, 10K), giá vàng thế giới XAU/USD
-- Giá bạc trong nước
+- Giá vàng tại Kim Linh (giá nội bộ tiệm)
+- Giá vàng thương hiệu (PNJ, SJC, DOJI - để so sánh thị trường)
+- Giá bạc tại Kim Linh
+- Giá bạc thương hiệu (Phú Quý, SJC, PNJ - để so sánh)
+- Giá vàng/bạc thế giới (XAU/USD, XAG/USD)
 - Sản phẩm vàng tây: nhẫn, dây chuyền, lắc tay, bông tai, nhẫn cưới
 - Cách tính giá = giá vàng × trọng lượng (chỉ)
 - Kiến thức đầu tư vàng cơ bản
 
 LOGIC:
-- "giá vàng hôm nay" → liệt kê ngắn gọn các loại vàng chính
+- "giá vàng" hoặc "giá vàng hôm nay" → báo giá Kim Linh (giá nội bộ tiệm)
+- "giá vàng thương hiệu" hoặc "giá PNJ/SJC/DOJI" → báo giá thương hiệu (PNJ, SJC, etc.)
+- "giá bạc" → báo giá bạc Kim Linh
+- "giá bạc thương hiệu" hoặc "giá bạc PNJ/SJC/Phú Quý" → báo giá bạc thương hiệu
+- "so sánh giá" → so sánh giá Kim Linh vs thương hiệu
 - "giá vàng tây" → trích giá Vàng Tây 10K
 - "giá vàng 9999" → trích giá Nhẫn Ép Vỉ 9999
-- "giá bạc" → liệt kê giá bạc
 - "mua vàng làm quà" → gợi ý vàng tây nhẹ
 - "đầu tư" → ưu/nhược điểm ngắn gọn, nhắc tham khảo
 - Ngoài phạm vi → "Dạ, câu hỏi này nằm ngoài phạm vi hỗ trợ của em ạ."
