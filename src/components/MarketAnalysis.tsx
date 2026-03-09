@@ -63,6 +63,9 @@ const MarketAnalysis = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const goldTickerRef = useRef<HTMLDivElement>(null);
+  const silverTickerRef = useRef<HTMLDivElement>(null);
+
   const fetchAnalysis = async () => {
     setLoading(true);
     setError(null);
@@ -81,9 +84,39 @@ const MarketAnalysis = () => {
 
   useEffect(() => {
     fetchAnalysis();
-    const interval = setInterval(() => { fetchAnalysis(); }, 10 * 60 * 1000); // 10 phút
+    const interval = setInterval(() => { fetchAnalysis(); }, 10 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // TradingView widgets for real-time XAU/USD and XAG/USD
+  useEffect(() => {
+    if (goldTickerRef.current && !goldTickerRef.current.querySelector('script')) {
+      const script = document.createElement('script');
+      script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js';
+      script.async = true;
+      script.innerHTML = JSON.stringify({
+        symbol: 'OANDA:XAUUSD',
+        width: '100%',
+        isTransparent: true,
+        colorTheme: 'light',
+        locale: 'vi_VN',
+      });
+      goldTickerRef.current.appendChild(script);
+    }
+    if (silverTickerRef.current && !silverTickerRef.current.querySelector('script')) {
+      const script = document.createElement('script');
+      script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js';
+      script.async = true;
+      script.innerHTML = JSON.stringify({
+        symbol: 'OANDA:XAGUSD',
+        width: '100%',
+        isTransparent: true,
+        colorTheme: 'light',
+        locale: 'vi_VN',
+      });
+      silverTickerRef.current.appendChild(script);
+    }
+  }, [loading]);
 
   return (
     <section id="phan-tich" className="py-12 md:py-16 bg-gradient-to-b from-background to-secondary/20">
