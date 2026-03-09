@@ -63,7 +63,7 @@ serve(async (req) => {
             required: ['silverPrices'],
           },
         },
-        waitFor: 10000,
+        waitFor: 5000,
       }),
     });
 

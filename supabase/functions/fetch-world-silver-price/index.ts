@@ -47,7 +47,7 @@ async function fetchFromFirecrawl(): Promise<WorldSilverData> {
           required: ['price'],
         },
       },
-      waitFor: 8000,
+      waitFor: 5000,
     }),
   });
 

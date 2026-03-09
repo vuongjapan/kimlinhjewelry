@@ -65,7 +65,7 @@ async function fetchFromFirecrawl(): Promise<CachedData> {
           required: ['goldPrices'],
         },
       },
-      waitFor: 10000,
+      waitFor: 5000,
     }),
   });
 

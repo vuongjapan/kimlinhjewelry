@@ -72,7 +72,7 @@ async function fetchFromFirecrawl(): Promise<CachedData> {
           required: ['silverPrices'],
         },
       },
-      waitFor: 10000,
+      waitFor: 5000,
     }),
   });
 
