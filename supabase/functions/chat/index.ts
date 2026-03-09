@@ -477,7 +477,8 @@ async function fetchWorldGoldPrice(): Promise<string> {
 
   try {
     const quote = await fetchTradingViewSymbol('OANDA:XAUUSD');
-    const text = `\nGIÁ VÀNG THẾ GIỚI (XAU/USD) - CẬP NHẬT MỚI NHẤT:\n- Giá: ${quote.close.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} USD/Ounce\n- Thay đổi: ${formatSigned(quote.changeAbs, 3)} (${formatSigned(quote.changePct, 2)}%)\n- Nguồn: TradingView OANDA\n`;
+    const timeVN = new Date().toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const text = `\nGIÁ VÀNG THẾ GIỚI (XAU/USD) - CẬP NHẬT LÚC ${timeVN}:\n- Giá: ${quote.close.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} USD/Ounce\n- Thay đổi: ${formatSigned(quote.changeAbs, 3)} (${formatSigned(quote.changePct, 2)}%)\n- Nguồn: TradingView OANDA\n`;
 
     worldGoldCache = { data: text, ts: now };
     console.log('World gold (scanner) fetched:', quote.close, quote.changeAbs, quote.changePct);
@@ -494,7 +495,8 @@ async function fetchWorldSilverPrice(): Promise<string> {
 
   try {
     const quote = await fetchTradingViewSymbol('TVC:SILVER');
-    const text = `\nGIÁ BẠC THẾ GIỚI (XAG/USD) - CẬP NHẬT MỚI NHẤT:\n- Giá: ${quote.close.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} USD/Ounce\n- Thay đổi: ${formatSigned(quote.changeAbs, 4)} (${formatSigned(quote.changePct, 2)}%)\n- Nguồn: TradingView TVC:SILVER\n`;
+    const timeVN = new Date().toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const text = `\nGIÁ BẠC THẾ GIỚI (XAG/USD) - CẬP NHẬT LÚC ${timeVN}:\n- Giá: ${quote.close.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} USD/Ounce\n- Thay đổi: ${formatSigned(quote.changeAbs, 4)} (${formatSigned(quote.changePct, 2)}%)\n- Nguồn: TradingView TVC:SILVER\n`;
 
     worldSilverCache = { data: text, ts: now };
     console.log('World silver (scanner) fetched:', quote.close, quote.changeAbs, quote.changePct);
