@@ -471,6 +471,8 @@ LOGIC:
 - "giá vàng thương hiệu" hoặc "giá PNJ/SJC/DOJI" → báo giá thương hiệu (PNJ, SJC, etc.)
 - "giá bạc" → báo giá bạc Kim Linh
 - "giá bạc thương hiệu" hoặc "giá bạc PNJ/SJC/Phú Quý" → báo giá bạc thương hiệu
+- "giá vàng thế giới" hoặc "XAU" hoặc "XAUUSD" hoặc "gold price" → báo giá XAU/USD từ dữ liệu thế giới
+- "giá bạc thế giới" hoặc "XAG" hoặc "XAGUSD" hoặc "silver price" → báo giá XAG/USD từ dữ liệu thế giới
 - "so sánh giá" → so sánh giá Kim Linh vs thương hiệu
 - "giá vàng tây" → trích giá Vàng Tây 10K
 - "giá vàng 9999" → trích giá Nhẫn Ép Vỉ 9999
