@@ -139,6 +139,30 @@ export type Database = {
         }
         Relationships: []
       }
+      market_analysis: {
+        Row: {
+          analysis_data: Json
+          created_at: string | null
+          id: string
+          source: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          analysis_data?: Json
+          created_at?: string | null
+          id?: string
+          source?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          analysis_data?: Json
+          created_at?: string | null
+          id?: string
+          source?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       price_edit_history: {
         Row: {
           edited_at: string
