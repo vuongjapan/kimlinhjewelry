@@ -280,6 +280,8 @@ async function fetchSilverPrices(): Promise<string> {
 
 let brandedGoldCache: { data: string; ts: number } | null = null;
 let brandedSilverCache: { data: string; ts: number } | null = null;
+let worldGoldCache: { data: string; ts: number } | null = null;
+let worldSilverCache: { data: string; ts: number } | null = null;
 
 async function fetchBrandedGoldPrices(): Promise<string> {
   const now = Date.now();
@@ -341,6 +343,66 @@ async function fetchBrandedSilverPrices(): Promise<string> {
   }
 }
 
+async function fetchWorldGoldPrice(): Promise<string> {
+  const now = Date.now();
+  if (worldGoldCache && now - worldGoldCache.ts < CACHE_TTL) return worldGoldCache.data;
+
+  try {
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/fetch-world-gold-price`, {
+      headers: { Authorization: `Bearer ${SERVICE_ROLE_KEY}` },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) throw new Error("World gold API error");
+    const result = await response.json();
+
+    const text = `\nGIÁ VÀNG THẾ GIỚI (XAU/USD):\n- Giá: ${result.price} ${result.unit}\n- Thay đổi: ${result.change}\n${result.vndPerOunce ? `- Quy đổi: ~${result.vndPerOunce} VNĐ/ounce\n` : ''}`;
+
+    worldGoldCache = { data: text, ts: now };
+    return text;
+  } catch (e) {
+    console.error("World gold fetch error:", e);
+    return worldGoldCache?.data || "";
+  }
+}
+
+async function fetchWorldSilverPrice(): Promise<string> {
+  const now = Date.now();
+  if (worldSilverCache && now - worldSilverCache.ts < CACHE_TTL) return worldSilverCache.data;
+
+  try {
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/fetch-world-silver-price`, {
+      headers: { Authorization: `Bearer ${SERVICE_ROLE_KEY}` },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) throw new Error("World silver API error");
+    const result = await response.json();
+
+    const text = `\nGIÁ BẠC THẾ GIỚI (XAG/USD):\n- Giá: ${result.price} ${result.unit}\n- Thay đổi: ${result.change}\n${result.vndPerOunce ? `- Quy đổi: ~${result.vndPerOunce} VNĐ/ounce\n` : ''}`;
+
+    worldSilverCache = { data: text, ts: now };
+    return text;
+  } catch (e) {
+    console.error("World silver fetch error:", e);
+    return worldSilverCache?.data || "";
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -353,7 +415,7 @@ serve(async (req) => {
     const currentTime = getCurrentTime();
 
     // Fetch memory + prices in parallel
-    const [existingMemory, manualGold, manualSilver, autoGold, autoSilver, brandedGold, brandedSilver] = await Promise.all([
+    const [existingMemory, manualGold, manualSilver, autoGold, autoSilver, brandedGold, brandedSilver, worldGold, worldSilver] = await Promise.all([
       getVisitorMemory(visitor_id || ''),
       fetchManualPrices('gold'),
       fetchManualPrices('silver'),
@@ -361,6 +423,8 @@ serve(async (req) => {
       fetchSilverPrices(),
       fetchBrandedGoldPrices(),
       fetchBrandedSilverPrices(),
+      fetchWorldGoldPrice(),
+      fetchWorldSilverPrice(),
     ]);
 
     // Extract new info from current messages and save
@@ -407,6 +471,8 @@ LOGIC:
 - "giá vàng thương hiệu" hoặc "giá PNJ/SJC/DOJI" → báo giá thương hiệu (PNJ, SJC, etc.)
 - "giá bạc" → báo giá bạc Kim Linh
 - "giá bạc thương hiệu" hoặc "giá bạc PNJ/SJC/Phú Quý" → báo giá bạc thương hiệu
+- "giá vàng thế giới" hoặc "XAU" hoặc "XAUUSD" hoặc "gold price" → báo giá XAU/USD từ dữ liệu thế giới
+- "giá bạc thế giới" hoặc "XAG" hoặc "XAGUSD" hoặc "silver price" → báo giá XAG/USD từ dữ liệu thế giới
 - "so sánh giá" → so sánh giá Kim Linh vs thương hiệu
 - "giá vàng tây" → trích giá Vàng Tây 10K
 - "giá vàng 9999" → trích giá Nhẫn Ép Vỉ 9999
@@ -426,7 +492,7 @@ QUY TẮC:
 4. Giờ làm việc: T2–CN, 8:00–17:00
 5. Không lưu/yêu cầu thông tin cá nhân nhạy cảm`;
 
-    const priceContext = `\n\n--- DỮ LIỆU GIÁ CẬP NHẬT ${currentDate} ${currentTime} ---\n${goldData}\n${brandedGold}\n${silverData}\n${brandedSilver}\nLưu ý: Giá chỉ mang tính tham khảo.\n---`;
+    const priceContext = `\n\n--- DỮ LIỆU GIÁ CẬP NHẬT ${currentDate} ${currentTime} ---\n${goldData}\n${brandedGold}\n${silverData}\n${brandedSilver}\n${worldGold}\n${worldSilver}\nLưu ý: Giá chỉ mang tính tham khảo.\n---`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
