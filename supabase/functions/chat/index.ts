@@ -8,6 +8,7 @@ const corsHeaders = {
 
 const CACHE_TTL = 90_000;
 const SEARCH_CACHE_TTL = 300_000; // 5 min for web search results
+const GEO_NEWS_CACHE_TTL = 600_000; // 10 min for geopolitical news
 
 let goldCache: { data: string; ts: number } | null = null;
 let silverCache: { data: string; ts: number } | null = null;
@@ -18,6 +19,55 @@ let brandedSilverCache: { data: string; ts: number } | null = null;
 let worldGoldCache: { data: string; ts: number } | null = null;
 let worldSilverCache: { data: string; ts: number } | null = null;
 let searchCache: Map<string, { data: string; ts: number }> = new Map();
+let geoNewsCache: { data: string; ts: number } | null = null;
+
+// ---------- Geopolitical News Auto-Fetch ----------
+async function fetchGeopoliticalNews(): Promise<string> {
+  const now = Date.now();
+  if (geoNewsCache && now - geoNewsCache.ts < GEO_NEWS_CACHE_TTL) return geoNewsCache.data;
+
+  try {
+    const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
+    if (!apiKey) return '';
+
+    const queries = [
+      'tin tức chiến tranh xung đột Mỹ Trung Quốc Triều Tiên Iran Israel mới nhất hôm nay',
+      'tình hình kinh tế chính trị châu Âu Hàn Quốc Đài Loan Việt Nam mới nhất',
+      'gold price geopolitics war trade tariff impact today',
+    ];
+
+    const results: string[] = [];
+    for (const query of queries) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const response = await fetch('https://api.firecrawl.dev/v1/search', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query, limit: 3, tbs: 'qdr:d' }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        if (!response.ok) continue;
+        const result = await response.json();
+        const items = result.data || [];
+        for (const item of items.slice(0, 3)) {
+          const title = item.title || '';
+          const desc = item.description || '';
+          const markdown = item.markdown ? item.markdown.slice(0, 300) : '';
+          if (title) results.push(`• ${title}: ${desc || markdown}`);
+        }
+      } catch { /* skip failed query */ }
+    }
+
+    const text = results.length > 0 ? results.join('\n') : '';
+    geoNewsCache = { data: text, ts: now };
+    return text;
+  } catch (e) {
+    console.error("Geo news fetch error:", e);
+    return geoNewsCache?.data || '';
+  }
+}
 
 function getCurrentDate(): string {
   return new Date().toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", year: "numeric" });
@@ -470,9 +520,9 @@ serve(async (req) => {
     // Detect if we need web search
     const searchQueries = detectSearchTopics(lastUserMsg);
 
-    // Fetch memory + prices + web search in parallel
+    // Fetch memory + prices + geo news + web search in parallel
     const searchPromises = searchQueries.map(q => searchWeb(q));
-    const [existingMemory, manualGold, manualSilver, autoGold, autoSilver, brandedGold, brandedSilver, worldGold, worldSilver, ...searchResults] = await Promise.all([
+    const [existingMemory, manualGold, manualSilver, autoGold, autoSilver, brandedGold, brandedSilver, worldGold, worldSilver, geoNews, ...searchResults] = await Promise.all([
       getVisitorMemory(visitor_id || ''),
       fetchManualPrices('gold'),
       fetchManualPrices('silver'),
@@ -482,6 +532,7 @@ serve(async (req) => {
       fetchBrandedSilverPrices(),
       fetchWorldGoldPrice(),
       fetchWorldSilverPrice(),
+      fetchGeopoliticalNews(),
       ...searchPromises,
     ]);
 
@@ -499,6 +550,12 @@ serve(async (req) => {
     const validResults = searchResults.filter(r => r && r.length > 0);
     if (validResults.length > 0) {
       webContext = '\n\n--- THÔNG TIN TÌM KIẾM TRÊN MẠNG (mới nhất) ---\n' + validResults.join('\n') + '\n---';
+    }
+
+    // Build geopolitical news context
+    let geoContext = '';
+    if (geoNews && geoNews.length > 0) {
+      geoContext = '\n\n--- TIN TỨC ĐỊA CHÍNH TRỊ THẾ GIỚI (tự động cập nhật) ---\n' + geoNews + '\n\nHãy sử dụng thông tin trên để phân tích tác động đến giá vàng/bạc khi tư vấn khách. Liên hệ tình hình Mỹ, Trung Quốc, Triều Tiên, Iran, Israel, châu Âu, Việt Nam, Hàn Quốc, Đài Loan với xu hướng giá vàng.\n---';
     }
 
     const SYSTEM_PROMPT = `Bạn là Linh – nhân viên tư vấn thực sự của tiệm vàng Kim Linh Jewelry, KHÔNG phải AI hay chatbot.
@@ -616,7 +673,7 @@ Khi khách hỏi về xu hướng, biến động, phân tích giá vàng thế 
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: SYSTEM_PROMPT + memoryContext + priceContext + webContext },
+          { role: "system", content: SYSTEM_PROMPT + memoryContext + priceContext + geoContext + webContext },
           ...messages,
         ],
         stream: true,
