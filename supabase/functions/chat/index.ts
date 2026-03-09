@@ -394,49 +394,56 @@ async function fetchBrandedSilverPrices(): Promise<string> {
   }
 }
 
+async function fetchTradingViewQuote(symbol: 'XAUUSD' | 'XAGUSD', url: string) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; KimLinhBot/1.0)',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    });
+
+    if (!response.ok) throw new Error(`TradingView HTTP ${response.status}`);
+    const html = await response.text();
+    const normalized = html.replace(/\s+/g, ' ');
+
+    const priceRegex = new RegExp(`${symbol}[^0-9]{0,120}([0-9][0-9,]*\\.?[0-9]*)\\s*R?USD`, 'i');
+    const priceMatch = normalized.match(priceRegex);
+    if (!priceMatch?.[1]) throw new Error(`No ${symbol} price extracted`);
+
+    const priceIndex = priceMatch.index ?? 0;
+    const windowText = normalized.slice(Math.max(0, priceIndex - 120), priceIndex + 260);
+
+    const changeMatch = windowText.match(/([+\-−]\d[\d,]*\.?\d*)\s*([+\-−]\d[\d,.]*%)/);
+    const rawChange = changeMatch ? `${changeMatch[1]} (${changeMatch[2]})` : 'N/A';
+    const change = rawChange.replace(/−/g, '-');
+
+    const updatedMatch = normalized.match(/(At close[^<]{0,90}|As of today[^<]{0,90}|As of[^<]{0,90})/i);
+
+    return {
+      price: priceMatch[1],
+      change,
+      updatedAtText: updatedMatch?.[1]?.trim() || '',
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function fetchWorldGoldPrice(): Promise<string> {
   const now = Date.now();
   if (worldGoldCache && now - worldGoldCache.ts < 30_000) return worldGoldCache.data;
 
   try {
-    const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
-    if (!apiKey) return worldGoldCache?.data || '';
+    const quote = await fetchTradingViewQuote('XAUUSD', 'https://www.tradingview.com/symbols/XAUUSD/');
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
-
-    const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        url: 'https://www.tradingview.com/symbols/XAUUSD/',
-        formats: ['extract'],
-        extract: {
-          prompt: 'Extract current OANDA XAUUSD price from this TradingView page. Also extract day change (value + percent) and last update text if available. Return only exact values shown on page.',
-          schema: {
-            type: 'object',
-            properties: {
-              price: { type: 'string', description: 'XAUUSD price like 5171.500' },
-              change: { type: 'string', description: 'Change with percent like +90.120 (+1.77%)' },
-              updatedAtText: { type: 'string', description: 'Optional market timestamp text' },
-            },
-            required: ['price'],
-          },
-        },
-        waitFor: 4000,
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    if (!response.ok) throw new Error(`Firecrawl error ${response.status}`);
-    const result = await response.json();
-    const ext = result.data?.extract || result.extract;
-    if (!ext?.price) throw new Error('No XAU price extracted');
-
-    const text = `\nGIÁ VÀNG THẾ GIỚI (XAU/USD) - CẬP NHẬT MỚI NHẤT:\n- Giá: ${ext.price} USD/Ounce\n- Thay đổi: ${ext.change || 'N/A'}\n${ext.updatedAtText ? `- Mốc thời gian: ${ext.updatedAtText}\n` : ''}`;
+    const text = `\nGIÁ VÀNG THẾ GIỚI (XAU/USD) - CẬP NHẬT MỚI NHẤT:\n- Giá: ${quote.price} USD/Ounce\n- Thay đổi: ${quote.change}\n${quote.updatedAtText ? `- Mốc thời gian: ${quote.updatedAtText}\n` : ''}`;
     worldGoldCache = { data: text, ts: now };
-    console.log('World gold (TradingView) fetched:', ext.price, ext.change || 'N/A');
+    console.log('World gold (TradingView) fetched:', quote.price, quote.change);
     return text;
   } catch (e) {
     console.error('World gold TradingView fetch error:', e);
@@ -449,44 +456,11 @@ async function fetchWorldSilverPrice(): Promise<string> {
   if (worldSilverCache && now - worldSilverCache.ts < 30_000) return worldSilverCache.data;
 
   try {
-    const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
-    if (!apiKey) return worldSilverCache?.data || '';
+    const quote = await fetchTradingViewQuote('XAGUSD', 'https://www.tradingview.com/symbols/XAGUSD/');
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
-
-    const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        url: 'https://www.tradingview.com/symbols/XAGUSD/',
-        formats: ['extract'],
-        extract: {
-          prompt: 'Extract current OANDA XAGUSD price from this TradingView page. Also extract day change (value + percent) and last update text if available. Return only exact values shown on page.',
-          schema: {
-            type: 'object',
-            properties: {
-              price: { type: 'string', description: 'XAGUSD price like 82.82450' },
-              change: { type: 'string', description: 'Change with percent like -1.62450 (-1.92%)' },
-              updatedAtText: { type: 'string', description: 'Optional market timestamp text' },
-            },
-            required: ['price'],
-          },
-        },
-        waitFor: 4000,
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    if (!response.ok) throw new Error(`Firecrawl error ${response.status}`);
-    const result = await response.json();
-    const ext = result.data?.extract || result.extract;
-    if (!ext?.price) throw new Error('No XAG price extracted');
-
-    const text = `\nGIÁ BẠC THẾ GIỚI (XAG/USD) - CẬP NHẬT MỚI NHẤT:\n- Giá: ${ext.price} USD/Ounce\n- Thay đổi: ${ext.change || 'N/A'}\n${ext.updatedAtText ? `- Mốc thời gian: ${ext.updatedAtText}\n` : ''}`;
+    const text = `\nGIÁ BẠC THẾ GIỚI (XAG/USD) - CẬP NHẬT MỚI NHẤT:\n- Giá: ${quote.price} USD/Ounce\n- Thay đổi: ${quote.change}\n${quote.updatedAtText ? `- Mốc thời gian: ${quote.updatedAtText}\n` : ''}`;
     worldSilverCache = { data: text, ts: now };
-    console.log('World silver (TradingView) fetched:', ext.price, ext.change || 'N/A');
+    console.log('World silver (TradingView) fetched:', quote.price, quote.change);
     return text;
   } catch (e) {
     console.error('World silver TradingView fetch error:', e);
