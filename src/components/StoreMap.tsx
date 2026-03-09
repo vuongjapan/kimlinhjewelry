@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { MapPin, Loader2 } from 'lucide-react';
@@ -8,6 +8,25 @@ const DEFAULT_URL = "https://www.google.com/maps/embed?pb=!1m17!1m11!1m3!1d197.9
 const StoreMap = () => {
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Lazy load when visible
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const { data: url, isLoading: urlLoading } = useQuery({
     queryKey: ['map-url'],
@@ -15,14 +34,15 @@ const StoreMap = () => {
       const { data } = await supabase.from('site_settings').select('value').eq('key', 'map_location').single();
       return (data?.value as any)?.embed_url || DEFAULT_URL;
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    enabled: isVisible, // Only fetch when visible
   });
 
   const iframeSrc = url || DEFAULT_URL;
-  const showPlaceholder = urlLoading || (!mapLoaded && !mapError);
+  const showPlaceholder = !isVisible || urlLoading || (!mapLoaded && !mapError);
 
   return (
-    <div className="w-full h-[350px] rounded-lg overflow-hidden border border-border relative bg-muted">
+    <div ref={containerRef} className="w-full h-[350px] rounded-lg overflow-hidden border border-border relative bg-muted">
       {/* Loading / error placeholder */}
       {(showPlaceholder || mapError) && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 z-10 bg-muted">
@@ -42,8 +62,8 @@ const StoreMap = () => {
         </div>
       )}
 
-      {/* Iframe – always render but hidden until loaded */}
-      {!urlLoading && (
+      {/* Iframe – only render when visible and URL loaded */}
+      {isVisible && !urlLoading && (
         <iframe
           src={iframeSrc}
           width="100%"

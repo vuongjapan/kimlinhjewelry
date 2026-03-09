@@ -21,7 +21,8 @@ const HeroSection = () => {
         .maybeSingle();
       return (data?.value as any) || {};
     },
-    staleTime: 60000,
+    staleTime: 5 * 60 * 1000, // 5 minutes - hero rarely changes
+    gcTime: 10 * 60 * 1000,
   });
 
   const v = (key: keyof typeof DEFAULTS) => data?.[key] || DEFAULTS[key];
@@ -29,7 +30,7 @@ const HeroSection = () => {
   return (
     <section className="relative min-h-[45vh] md:min-h-[60vh] lg:min-h-[70vh] flex items-center justify-center overflow-hidden">
       <div className="absolute inset-0">
-        <img src={heroImage} alt="Trang sức vàng Kim Linh" className="w-full h-full object-cover" loading="eager" />
+        <img src={heroImage} alt="Trang sức vàng Kim Linh" className="w-full h-full object-cover" loading="eager" fetchPriority="high" />
         <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/30 to-background" />
       </div>
       <div className="relative z-10 text-center px-4 max-w-3xl mx-auto animate-fade-in">
