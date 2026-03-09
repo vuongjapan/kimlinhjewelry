@@ -12,6 +12,7 @@ import Footer from '@/components/Footer';
 import FloatingButtons from '@/components/FloatingButtons';
 import AIChatWidget from '@/components/AIChatWidget';
 import AboutSection from '@/components/AboutSection';
+import MarketAnalysis from '@/components/MarketAnalysis';
 
 const Index = () => {
   return (
@@ -24,6 +25,7 @@ const Index = () => {
         <ProductShowcase />
         <WorldGoldPrice />
         <WorldSilverPrice />
+        <MarketAnalysis />
         <DomesticSilverPriceCard />
         <BrandedGoldPriceCard />
         <InvestmentKnowledge />
