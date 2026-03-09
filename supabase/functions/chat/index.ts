@@ -278,6 +278,69 @@ async function fetchSilverPrices(): Promise<string> {
   }
 }
 
+let brandedGoldCache: { data: string; ts: number } | null = null;
+let brandedSilverCache: { data: string; ts: number } | null = null;
+
+async function fetchBrandedGoldPrices(): Promise<string> {
+  const now = Date.now();
+  if (brandedGoldCache && now - brandedGoldCache.ts < CACHE_TTL) return brandedGoldCache.data;
+
+  try {
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/fetch-branded-gold-prices`, {
+      headers: { Authorization: `Bearer ${SERVICE_ROLE_KEY}` },
+    });
+
+    if (!response.ok) throw new Error("Branded gold API error");
+    const result = await response.json();
+    const prices = result.prices || [];
+    if (prices.length === 0) return "";
+
+    let text = "\nGIÁ VÀNG THƯƠNG HIỆU (PNJ, SJC, DOJI...):\n";
+    for (const p of prices.slice(0, 8)) {
+      text += `- ${p.type}: Mua ${p.buy} | Bán ${p.sell}\n`;
+    }
+
+    brandedGoldCache = { data: text, ts: now };
+    return text;
+  } catch (e) {
+    console.error("Branded gold fetch error:", e);
+    return brandedGoldCache?.data || "";
+  }
+}
+
+async function fetchBrandedSilverPrices(): Promise<string> {
+  const now = Date.now();
+  if (brandedSilverCache && now - brandedSilverCache.ts < CACHE_TTL) return brandedSilverCache.data;
+
+  try {
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/fetch-branded-silver-prices`, {
+      headers: { Authorization: `Bearer ${SERVICE_ROLE_KEY}` },
+    });
+
+    if (!response.ok) throw new Error("Branded silver API error");
+    const result = await response.json();
+    const prices = result.prices || [];
+    if (prices.length === 0) return "";
+
+    let text = "\nGIÁ BẠC THƯƠNG HIỆU (Phú Quý, SJC, PNJ...):\n";
+    for (const p of prices.slice(0, 8)) {
+      text += `- ${p.type}: Mua ${p.buy} triệu | Bán ${p.sell} triệu\n`;
+    }
+
+    brandedSilverCache = { data: text, ts: now };
+    return text;
+  } catch (e) {
+    console.error("Branded silver fetch error:", e);
+    return brandedSilverCache?.data || "";
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
