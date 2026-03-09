@@ -520,9 +520,9 @@ serve(async (req) => {
     // Detect if we need web search
     const searchQueries = detectSearchTopics(lastUserMsg);
 
-    // Fetch memory + prices + web search in parallel
+    // Fetch memory + prices + geo news + web search in parallel
     const searchPromises = searchQueries.map(q => searchWeb(q));
-    const [existingMemory, manualGold, manualSilver, autoGold, autoSilver, brandedGold, brandedSilver, worldGold, worldSilver, ...searchResults] = await Promise.all([
+    const [existingMemory, manualGold, manualSilver, autoGold, autoSilver, brandedGold, brandedSilver, worldGold, worldSilver, geoNews, ...searchResults] = await Promise.all([
       getVisitorMemory(visitor_id || ''),
       fetchManualPrices('gold'),
       fetchManualPrices('silver'),
@@ -532,6 +532,7 @@ serve(async (req) => {
       fetchBrandedSilverPrices(),
       fetchWorldGoldPrice(),
       fetchWorldSilverPrice(),
+      fetchGeopoliticalNews(),
       ...searchPromises,
     ]);
 
@@ -549,6 +550,12 @@ serve(async (req) => {
     const validResults = searchResults.filter(r => r && r.length > 0);
     if (validResults.length > 0) {
       webContext = '\n\n--- THÔNG TIN TÌM KIẾM TRÊN MẠNG (mới nhất) ---\n' + validResults.join('\n') + '\n---';
+    }
+
+    // Build geopolitical news context
+    let geoContext = '';
+    if (geoNews && geoNews.length > 0) {
+      geoContext = '\n\n--- TIN TỨC ĐỊA CHÍNH TRỊ THẾ GIỚI (tự động cập nhật) ---\n' + geoNews + '\n\nHãy sử dụng thông tin trên để phân tích tác động đến giá vàng/bạc khi tư vấn khách. Liên hệ tình hình Mỹ, Trung Quốc, Triều Tiên, Iran, Israel, châu Âu, Việt Nam, Hàn Quốc, Đài Loan với xu hướng giá vàng.\n---';
     }
 
     const SYSTEM_PROMPT = `Bạn là Linh – nhân viên tư vấn thực sự của tiệm vàng Kim Linh Jewelry, KHÔNG phải AI hay chatbot.
