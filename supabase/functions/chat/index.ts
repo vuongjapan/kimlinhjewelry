@@ -280,6 +280,8 @@ async function fetchSilverPrices(): Promise<string> {
 
 let brandedGoldCache: { data: string; ts: number } | null = null;
 let brandedSilverCache: { data: string; ts: number } | null = null;
+let worldGoldCache: { data: string; ts: number } | null = null;
+let worldSilverCache: { data: string; ts: number } | null = null;
 
 async function fetchBrandedGoldPrices(): Promise<string> {
   const now = Date.now();
@@ -338,6 +340,66 @@ async function fetchBrandedSilverPrices(): Promise<string> {
   } catch (e) {
     console.error("Branded silver fetch error:", e);
     return brandedSilverCache?.data || "";
+  }
+}
+
+async function fetchWorldGoldPrice(): Promise<string> {
+  const now = Date.now();
+  if (worldGoldCache && now - worldGoldCache.ts < CACHE_TTL) return worldGoldCache.data;
+
+  try {
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/fetch-world-gold-price`, {
+      headers: { Authorization: `Bearer ${SERVICE_ROLE_KEY}` },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) throw new Error("World gold API error");
+    const result = await response.json();
+
+    const text = `\nGIÁ VÀNG THẾ GIỚI (XAU/USD):\n- Giá: ${result.price} ${result.unit}\n- Thay đổi: ${result.change}\n${result.vndPerOunce ? `- Quy đổi: ~${result.vndPerOunce} VNĐ/ounce\n` : ''}`;
+
+    worldGoldCache = { data: text, ts: now };
+    return text;
+  } catch (e) {
+    console.error("World gold fetch error:", e);
+    return worldGoldCache?.data || "";
+  }
+}
+
+async function fetchWorldSilverPrice(): Promise<string> {
+  const now = Date.now();
+  if (worldSilverCache && now - worldSilverCache.ts < CACHE_TTL) return worldSilverCache.data;
+
+  try {
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/fetch-world-silver-price`, {
+      headers: { Authorization: `Bearer ${SERVICE_ROLE_KEY}` },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) throw new Error("World silver API error");
+    const result = await response.json();
+
+    const text = `\nGIÁ BẠC THẾ GIỚI (XAG/USD):\n- Giá: ${result.price} ${result.unit}\n- Thay đổi: ${result.change}\n${result.vndPerOunce ? `- Quy đổi: ~${result.vndPerOunce} VNĐ/ounce\n` : ''}`;
+
+    worldSilverCache = { data: text, ts: now };
+    return text;
+  } catch (e) {
+    console.error("World silver fetch error:", e);
+    return worldSilverCache?.data || "";
   }
 }
 
