@@ -1,18 +1,27 @@
+import { lazy, Suspense } from 'react';
 import Navbar from '@/components/Navbar';
 import HeroSection from '@/components/HeroSection';
-import WorldGoldPrice from '@/components/WorldGoldPrice';
-import WorldSilverPrice from '@/components/WorldSilverPrice';
 import DomesticGoldPriceCard from '@/components/DomesticGoldPriceCard';
-import DomesticSilverPriceCard from '@/components/DomesticSilverPriceCard';
-import BrandedGoldPriceCard from '@/components/BrandedGoldPriceCard';
-import ProductShowcase from '@/components/ProductShowcase';
-import InvestmentKnowledge from '@/components/InvestmentKnowledge';
-import ContactSection from '@/components/ContactSection';
 import Footer from '@/components/Footer';
 import FloatingButtons from '@/components/FloatingButtons';
-import AIChatWidget from '@/components/AIChatWidget';
-import AboutSection from '@/components/AboutSection';
-import MarketAnalysis from '@/components/MarketAnalysis';
+
+// Lazy load below-fold components
+const AboutSection = lazy(() => import('@/components/AboutSection'));
+const ProductShowcase = lazy(() => import('@/components/ProductShowcase'));
+const WorldGoldPrice = lazy(() => import('@/components/WorldGoldPrice'));
+const WorldSilverPrice = lazy(() => import('@/components/WorldSilverPrice'));
+const MarketAnalysis = lazy(() => import('@/components/MarketAnalysis'));
+const DomesticSilverPriceCard = lazy(() => import('@/components/DomesticSilverPriceCard'));
+const BrandedGoldPriceCard = lazy(() => import('@/components/BrandedGoldPriceCard'));
+const InvestmentKnowledge = lazy(() => import('@/components/InvestmentKnowledge'));
+const ContactSection = lazy(() => import('@/components/ContactSection'));
+const AIChatWidget = lazy(() => import('@/components/AIChatWidget'));
+
+const SectionFallback = () => (
+  <div className="flex items-center justify-center py-12">
+    <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+  </div>
+);
 
 const Index = () => {
   return (
@@ -21,19 +30,39 @@ const Index = () => {
       <main>
         <HeroSection />
         <DomesticGoldPriceCard />
-        <AboutSection />
-        <ProductShowcase />
-        <WorldGoldPrice />
-        <WorldSilverPrice />
-        <MarketAnalysis />
-        <DomesticSilverPriceCard />
-        <BrandedGoldPriceCard />
-        <InvestmentKnowledge />
-        <ContactSection />
+        <Suspense fallback={<SectionFallback />}>
+          <AboutSection />
+        </Suspense>
+        <Suspense fallback={<SectionFallback />}>
+          <ProductShowcase />
+        </Suspense>
+        <Suspense fallback={<SectionFallback />}>
+          <WorldGoldPrice />
+        </Suspense>
+        <Suspense fallback={<SectionFallback />}>
+          <WorldSilverPrice />
+        </Suspense>
+        <Suspense fallback={<SectionFallback />}>
+          <MarketAnalysis />
+        </Suspense>
+        <Suspense fallback={<SectionFallback />}>
+          <DomesticSilverPriceCard />
+        </Suspense>
+        <Suspense fallback={<SectionFallback />}>
+          <BrandedGoldPriceCard />
+        </Suspense>
+        <Suspense fallback={<SectionFallback />}>
+          <InvestmentKnowledge />
+        </Suspense>
+        <Suspense fallback={<SectionFallback />}>
+          <ContactSection />
+        </Suspense>
       </main>
       <Footer />
       <FloatingButtons />
-      <AIChatWidget />
+      <Suspense fallback={null}>
+        <AIChatWidget />
+      </Suspense>
     </div>
   );
 };
