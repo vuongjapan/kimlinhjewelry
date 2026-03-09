@@ -399,28 +399,48 @@ async function fetchWorldGoldPrice(): Promise<string> {
   if (worldGoldCache && now - worldGoldCache.ts < CACHE_TTL) return worldGoldCache.data;
 
   try {
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-    const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    
+    const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
+    if (!apiKey) return worldGoldCache?.data || '';
+
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-    
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/fetch-world-gold-price`, {
-      headers: { Authorization: `Bearer ${SERVICE_ROLE_KEY}` },
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+    const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: 'https://cafef.vn/du-lieu/gia-vang-hom-nay/the-gioi.chn',
+        formats: ['extract'],
+        extract: {
+          prompt: 'Extract the world gold spot price XAU/USD. Get the current price in USD per ounce, the change amount with percentage, and VND equivalent per ounce.',
+          schema: {
+            type: 'object',
+            properties: {
+              price: { type: 'string', description: 'Current gold price USD/ounce e.g. "3,171.92"' },
+              change: { type: 'string', description: 'Change e.g. "+21.62 (0.42%)"' },
+              vndPerOunce: { type: 'string', description: 'VND per ounce e.g. "136,068,043"' },
+            },
+            required: ['price'],
+          },
+        },
+        waitFor: 5000,
+      }),
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
 
-    if (!response.ok) throw new Error("World gold API error");
+    if (!response.ok) throw new Error(`Firecrawl error ${response.status}`);
     const result = await response.json();
+    const ext = result.data?.extract || result.extract;
+    if (!ext?.price) throw new Error('No price extracted');
 
-    const text = `\nGIÁ VÀNG THẾ GIỚI (XAU/USD):\n- Giá: ${result.price} ${result.unit}\n- Thay đổi: ${result.change}\n${result.vndPerOunce ? `- Quy đổi: ~${result.vndPerOunce} VNĐ/ounce\n` : ''}`;
-
+    const text = `\nGIÁ VÀNG THẾ GIỚI (XAU/USD) - CẬP NHẬT MỚI NHẤT:\n- Giá: ${ext.price} USD/Ounce\n- Thay đổi: ${ext.change || 'N/A'}\n${ext.vndPerOunce ? `- Quy đổi: ~${ext.vndPerOunce} VNĐ/ounce\n` : ''}`;
     worldGoldCache = { data: text, ts: now };
+    console.log("World gold fetched directly:", ext.price);
     return text;
   } catch (e) {
-    console.error("World gold fetch error:", e);
-    return worldGoldCache?.data || "";
+    console.error("World gold direct fetch error:", e);
+    return worldGoldCache?.data || '';
   }
 }
 
@@ -429,28 +449,48 @@ async function fetchWorldSilverPrice(): Promise<string> {
   if (worldSilverCache && now - worldSilverCache.ts < CACHE_TTL) return worldSilverCache.data;
 
   try {
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-    const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    
+    const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
+    if (!apiKey) return worldSilverCache?.data || '';
+
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-    
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/fetch-world-silver-price`, {
-      headers: { Authorization: `Bearer ${SERVICE_ROLE_KEY}` },
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+    const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: 'https://cafef.vn/du-lieu/gia-bac-hom-nay/the-gioi.chn',
+        formats: ['extract'],
+        extract: {
+          prompt: 'Extract the world silver spot price XAG/USD. Get the current price in USD per ounce, the change amount with percentage, and VND equivalent per ounce.',
+          schema: {
+            type: 'object',
+            properties: {
+              price: { type: 'string', description: 'Current silver price USD/ounce e.g. "32.45"' },
+              change: { type: 'string', description: 'Change e.g. "+0.15 (0.46%)"' },
+              vndPerOunce: { type: 'string', description: 'VND per ounce e.g. "2,212,426"' },
+            },
+            required: ['price'],
+          },
+        },
+        waitFor: 5000,
+      }),
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
 
-    if (!response.ok) throw new Error("World silver API error");
+    if (!response.ok) throw new Error(`Firecrawl error ${response.status}`);
     const result = await response.json();
+    const ext = result.data?.extract || result.extract;
+    if (!ext?.price) throw new Error('No price extracted');
 
-    const text = `\nGIÁ BẠC THẾ GIỚI (XAG/USD):\n- Giá: ${result.price} ${result.unit}\n- Thay đổi: ${result.change}\n${result.vndPerOunce ? `- Quy đổi: ~${result.vndPerOunce} VNĐ/ounce\n` : ''}`;
-
+    const text = `\nGIÁ BẠC THẾ GIỚI (XAG/USD) - CẬP NHẬT MỚI NHẤT:\n- Giá: ${ext.price} USD/Ounce\n- Thay đổi: ${ext.change || 'N/A'}\n${ext.vndPerOunce ? `- Quy đổi: ~${ext.vndPerOunce} VNĐ/ounce\n` : ''}`;
     worldSilverCache = { data: text, ts: now };
+    console.log("World silver fetched directly:", ext.price);
     return text;
   } catch (e) {
-    console.error("World silver fetch error:", e);
-    return worldSilverCache?.data || "";
+    console.error("World silver direct fetch error:", e);
+    return worldSilverCache?.data || '';
   }
 }
 
