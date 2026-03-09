@@ -69,6 +69,46 @@ async function fetchGeopoliticalNews(): Promise<string> {
   }
 }
 
+// ---------- Market Analysis from DB ----------
+let marketAnalysisCache: { data: string; ts: number } | null = null;
+const MARKET_ANALYSIS_CACHE_TTL = 300_000; // 5 min
+
+async function fetchMarketAnalysisFromDB(): Promise<string> {
+  const now = Date.now();
+  if (marketAnalysisCache && now - marketAnalysisCache.ts < MARKET_ANALYSIS_CACHE_TTL) return marketAnalysisCache.data;
+
+  try {
+    const sb = getSupabaseClient();
+    const { data } = await sb.from('market_analysis').select('analysis_data, updated_at').order('updated_at', { ascending: false }).limit(1).maybeSingle();
+    if (!data?.analysis_data) return '';
+
+    const a = data.analysis_data as any;
+    let text = '\n--- PHÂN TÍCH KỸ THUẬT THỊ TRƯỜNG (từ Investing.com, AI phân tích) ---\n';
+    text += `Cập nhật: ${a.updatedAt || data.updated_at}\n`;
+    if (a.goldPrice) text += `• Giá vàng XAU/USD: ${a.goldPrice} (${a.goldChange})\n`;
+    if (a.silverPrice) text += `• Giá bạc XAG/USD: ${a.silverPrice} (${a.silverChange})\n`;
+    if (a.overallSignal) text += `• Tín hiệu tổng quan: ${a.overallSignal}\n`;
+    if (a.technicalSummary) text += `• Phân tích: ${a.technicalSummary}\n`;
+    if (a.trendAnalysis) text += `• Xu hướng: ${a.trendAnalysis}\n`;
+    if (a.supportResistance) {
+      const sr = a.supportResistance;
+      text += `• Hỗ trợ: ${sr.support1 || '?'} / ${sr.support2 || '?'} | Kháng cự: ${sr.resistance1 || '?'} / ${sr.resistance2 || '?'}\n`;
+    }
+    if (a.geopoliticalImpact) text += `• Địa chính trị: ${a.geopoliticalImpact}\n`;
+    if (a.aiPrediction) text += `• Dự báo AI: ${a.aiPrediction}\n`;
+    if (a.recommendation) text += `• Khuyến nghị: ${a.recommendation}\n`;
+    if (a.silverAnalysis) text += `• Bạc: ${a.silverAnalysis}\n`;
+    if (a.newsHighlights?.length > 0) text += `• Tin nổi bật: ${a.newsHighlights.join(' | ')}\n`;
+    text += '---';
+
+    marketAnalysisCache = { data: text, ts: now };
+    return text;
+  } catch (e) {
+    console.error("Market analysis DB fetch error:", e);
+    return marketAnalysisCache?.data || '';
+  }
+}
+
 function getCurrentDate(): string {
   return new Date().toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", year: "numeric" });
 }
