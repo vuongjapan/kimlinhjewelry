@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { getCachedPrice, setCachedPrice } from '@/lib/priceCache';
+import { getCachedPrice, setCachedPrice, isCacheFresh } from '@/lib/priceCache';
 
 export interface SilverPriceItem {
   type: string;
@@ -22,8 +22,15 @@ export function useSilverPrices() {
   const [data, setData] = useState<SilverPriceData | null>(() => getCachedPrice<SilverPriceData>(CACHE_KEY));
   const [loading, setLoading] = useState(!getCachedPrice(CACHE_KEY));
   const [error, setError] = useState<string | null>(null);
+  const fetchedRef = useRef(false);
 
-  const fetchPrices = useCallback(async () => {
+  const fetchPrices = useCallback(async (force = false) => {
+    // Skip if cache is fresh and not forcing
+    if (!force && isCacheFresh(CACHE_KEY) && data) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const [manualResult, apiResp] = await Promise.allSettled([
         supabase.from('site_settings').select('value').eq('key', 'silver_price_manual').maybeSingle(),
@@ -72,13 +79,16 @@ export function useSilverPrices() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [data]);
 
   useEffect(() => {
-    fetchPrices();
-    const interval = setInterval(fetchPrices, REFRESH_INTERVAL);
+    if (!fetchedRef.current) {
+      fetchedRef.current = true;
+      fetchPrices();
+    }
+    const interval = setInterval(() => fetchPrices(true), REFRESH_INTERVAL);
     return () => clearInterval(interval);
   }, [fetchPrices]);
 
-  return { data, loading, error, refetch: fetchPrices };
+  return { data, loading, error, refetch: () => fetchPrices(true) };
 }

@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { getCachedPrice, setCachedPrice } from '@/lib/priceCache';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { getCachedPrice, setCachedPrice, isCacheFresh } from '@/lib/priceCache';
 
 export interface BrandedGoldPriceItem {
   type: string;
@@ -20,8 +20,15 @@ export function useBrandedGoldPrices() {
   const [data, setData] = useState<BrandedGoldPriceData | null>(() => getCachedPrice<BrandedGoldPriceData>(CACHE_KEY));
   const [loading, setLoading] = useState(!getCachedPrice(CACHE_KEY));
   const [error, setError] = useState<string | null>(null);
+  const fetchedRef = useRef(false);
 
-  const fetchPrices = useCallback(async () => {
+  const fetchPrices = useCallback(async (force = false) => {
+    // Skip if cache is fresh and not forcing
+    if (!force && isCacheFresh(CACHE_KEY) && data) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const resp = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-branded-gold-prices`,
@@ -38,13 +45,16 @@ export function useBrandedGoldPrices() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [data]);
 
   useEffect(() => {
-    fetchPrices();
-    const interval = setInterval(fetchPrices, REFRESH_INTERVAL);
+    if (!fetchedRef.current) {
+      fetchedRef.current = true;
+      fetchPrices();
+    }
+    const interval = setInterval(() => fetchPrices(true), REFRESH_INTERVAL);
     return () => clearInterval(interval);
   }, [fetchPrices]);
 
-  return { data, loading, error, refetch: fetchPrices };
+  return { data, loading, error, refetch: () => fetchPrices(true) };
 }

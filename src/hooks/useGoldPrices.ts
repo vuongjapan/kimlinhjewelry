@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { getCachedPrice, setCachedPrice } from '@/lib/priceCache';
+import { getCachedPrice, setCachedPrice, isCacheFresh } from '@/lib/priceCache';
 
 export interface GoldPrice {
   type: string;
@@ -23,8 +23,15 @@ export function useGoldPrices() {
   const [data, setData] = useState<GoldPriceData | null>(() => getCachedPrice<GoldPriceData>(CACHE_KEY));
   const [loading, setLoading] = useState(!getCachedPrice(CACHE_KEY));
   const [error, setError] = useState<string | null>(null);
+  const fetchedRef = useRef(false);
 
-  const fetchPrices = useCallback(async () => {
+  const fetchPrices = useCallback(async (force = false) => {
+    // Skip if cache is fresh and not forcing
+    if (!force && isCacheFresh(CACHE_KEY) && data) {
+      setLoading(false);
+      return;
+    }
+
     try {
       // Check manual mode and fetch API in parallel
       const [manualResult, apiResp] = await Promise.allSettled([
@@ -80,13 +87,16 @@ export function useGoldPrices() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [data]);
 
   useEffect(() => {
-    fetchPrices();
-    const interval = setInterval(fetchPrices, REFRESH_INTERVAL);
+    if (!fetchedRef.current) {
+      fetchedRef.current = true;
+      fetchPrices();
+    }
+    const interval = setInterval(() => fetchPrices(true), REFRESH_INTERVAL);
     return () => clearInterval(interval);
   }, [fetchPrices]);
 
-  return { data, loading, error, refetch: fetchPrices };
+  return { data, loading, error, refetch: () => fetchPrices(true) };
 }
