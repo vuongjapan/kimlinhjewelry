@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { TrendingUp, TrendingDown, Minus, RefreshCw, BarChart3, Shield, Target, Newspaper, Brain, AlertTriangle } from 'lucide-react';
 
 interface KeyIndicator {
