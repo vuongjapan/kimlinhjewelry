@@ -673,7 +673,7 @@ Khi khách hỏi về xu hướng, biến động, phân tích giá vàng thế 
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: SYSTEM_PROMPT + memoryContext + priceContext + webContext },
+          { role: "system", content: SYSTEM_PROMPT + memoryContext + priceContext + geoContext + webContext },
           ...messages,
         ],
         stream: true,
