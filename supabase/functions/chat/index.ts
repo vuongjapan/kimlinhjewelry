@@ -175,7 +175,16 @@ function detectSearchTopics(lastUserMsg: string): string[] {
       text.includes('tình hình') || text.includes('thế giới') || text.includes('nên mua') || text.includes('nên bán') ||
       text.includes('xu hướng') || text.includes('dự báo') || text.includes('phân tích')) {
     queries.push('tình hình kinh tế thế giới chiến tranh địa chính trị mới nhất ' + getCurrentDate());
-    queries.push('giá vàng xu hướng phân tích dự báo mới nhất');
+    queries.push('giá vàng XAU/USD xu hướng phân tích kỹ thuật dự báo tuần này');
+  }
+
+  // XAU/USD trend analysis
+  if (text.includes('xau') || text.includes('xauusd') || text.includes('giá vàng thế giới') || text.includes('gold') ||
+      text.includes('biến động') || text.includes('trend') || text.includes('kỹ thuật') || text.includes('technical') ||
+      text.includes('hỗ trợ') || text.includes('kháng cự') || text.includes('support') || text.includes('resistance') ||
+      text.includes('tăng hay giảm') || text.includes('lên hay xuống')) {
+    queries.push('XAU/USD gold price technical analysis trend forecast today ' + getCurrentDate());
+    queries.push('giá vàng thế giới phân tích kỹ thuật hỗ trợ kháng cự hôm nay');
   }
 
   // Sầm Sơn tourism/history
@@ -546,12 +555,28 @@ QUAN TRỌNG: Khi khách hỏi về tình hình thế giới, nên mua hay bán 
 - Cách tính giá = giá vàng × trọng lượng (chỉ) + công chế tác
 - Kiến thức đầu tư vàng: mua vàng miếng vs trang sức, lưu ý khi mua bán
 
+=== PHÂN TÍCH XU HƯỚNG GIÁ VÀNG XAU/USD ===
+Khi khách hỏi về xu hướng, biến động, phân tích giá vàng thế giới:
+1. Nêu giá hiện tại từ dữ liệu (nếu có)
+2. Dựa vào thông tin tìm kiếm trên mạng (nếu có) để phân tích:
+   - Xu hướng ngắn hạn (tuần này): tăng/giảm/đi ngang
+   - Vùng hỗ trợ (support) và kháng cự (resistance) quan trọng
+   - Yếu tố tác động: USD, lãi suất Fed, địa chính trị, lạm phát
+3. Đưa nhận định ngắn gọn, dễ hiểu cho người không chuyên:
+   - "Giá vàng đang trong xu hướng tăng/giảm..."
+   - "Vùng hỗ trợ quanh $X, kháng cự tại $Y"
+   - "Nếu giá vượt $Y thì có thể lên tiếp, nếu thủng $X thì coi chừng giảm"
+4. Kết hợp tư vấn mua/bán theo tình hình
+5. LUÔN nhấn mạnh: "Đây chỉ là nhận định tham khảo của em thôi ạ"
+- Nói đơn giản, KHÔNG dùng thuật ngữ kỹ thuật phức tạp (RSI, MACD, Fibonacci → diễn giải bằng lời)
+
 === LOGIC TRẢ LỜI ===
 - "giá vàng" → báo giá Kim Linh
 - "giá vàng thương hiệu" / "PNJ/SJC/DOJI" → báo giá thương hiệu
 - "giá bạc" → báo giá bạc Kim Linh
-- "giá vàng thế giới" / "XAU" / "XAUUSD" → báo XAU/USD
+- "giá vàng thế giới" / "XAU" / "XAUUSD" → báo XAU/USD + phân tích xu hướng nếu có dữ liệu
 - "giá bạc thế giới" / "XAG" / "XAGUSD" → báo XAG/USD
+- "xu hướng" / "biến động" / "phân tích" / "tăng hay giảm" → phân tích xu hướng XAU/USD chi tiết
 - "so sánh giá" → so sánh Kim Linh vs thương hiệu
 - "nên mua không" / "nên bán không" → phân tích tình hình + tư vấn (dùng thông tin tìm kiếm)
 - "thời tiết" → chia sẻ như người địa phương, kèm lời khuyên
