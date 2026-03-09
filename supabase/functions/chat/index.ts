@@ -8,6 +8,7 @@ const corsHeaders = {
 
 const CACHE_TTL = 90_000;
 const SEARCH_CACHE_TTL = 300_000; // 5 min for web search results
+const GEO_NEWS_CACHE_TTL = 600_000; // 10 min for geopolitical news
 
 let goldCache: { data: string; ts: number } | null = null;
 let silverCache: { data: string; ts: number } | null = null;
