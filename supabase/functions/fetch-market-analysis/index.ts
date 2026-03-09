@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -289,6 +290,21 @@ QUAN TRỌNG: Trả về ĐÚNG JSON format, không markdown, không backticks. 
     // Add raw data for reference
     analysis.rawTechnical = techData;
     analysis.updatedAt = new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+
+    // Save to database for chatbot and persistence
+    try {
+      const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      // Upsert: keep only latest record
+      const { data: existing } = await sb.from('market_analysis').select('id').order('updated_at', { ascending: false }).limit(1).maybeSingle();
+      if (existing) {
+        await sb.from('market_analysis').update({ analysis_data: analysis, updated_at: new Date().toISOString() }).eq('id', existing.id);
+      } else {
+        await sb.from('market_analysis').insert({ analysis_data: analysis });
+      }
+      console.log('Market analysis saved to DB');
+    } catch (dbErr) {
+      console.error('Failed to save analysis to DB:', dbErr);
+    }
 
     analysisCache = { data: analysis, ts: now };
 
