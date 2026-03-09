@@ -396,7 +396,7 @@ async function fetchBrandedSilverPrices(): Promise<string> {
 
 async function fetchWorldGoldPrice(): Promise<string> {
   const now = Date.now();
-  if (worldGoldCache && now - worldGoldCache.ts < CACHE_TTL) return worldGoldCache.data;
+  if (worldGoldCache && now - worldGoldCache.ts < 30_000) return worldGoldCache.data;
 
   try {
     const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
@@ -409,21 +409,21 @@ async function fetchWorldGoldPrice(): Promise<string> {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        url: 'https://cafef.vn/du-lieu/gia-vang-hom-nay/the-gioi.chn',
+        url: 'https://www.tradingview.com/symbols/XAUUSD/',
         formats: ['extract'],
         extract: {
-          prompt: 'Extract the world gold spot price XAU/USD. Get the current price in USD per ounce, the change amount with percentage, and VND equivalent per ounce.',
+          prompt: 'Extract current OANDA XAUUSD price from this TradingView page. Also extract day change (value + percent) and last update text if available. Return only exact values shown on page.',
           schema: {
             type: 'object',
             properties: {
-              price: { type: 'string', description: 'Current gold price USD/ounce e.g. "3,171.92"' },
-              change: { type: 'string', description: 'Change e.g. "+21.62 (0.42%)"' },
-              vndPerOunce: { type: 'string', description: 'VND per ounce e.g. "136,068,043"' },
+              price: { type: 'string', description: 'XAUUSD price like 5171.500' },
+              change: { type: 'string', description: 'Change with percent like +90.120 (+1.77%)' },
+              updatedAtText: { type: 'string', description: 'Optional market timestamp text' },
             },
             required: ['price'],
           },
         },
-        waitFor: 5000,
+        waitFor: 4000,
       }),
       signal: controller.signal,
     });
@@ -432,21 +432,21 @@ async function fetchWorldGoldPrice(): Promise<string> {
     if (!response.ok) throw new Error(`Firecrawl error ${response.status}`);
     const result = await response.json();
     const ext = result.data?.extract || result.extract;
-    if (!ext?.price) throw new Error('No price extracted');
+    if (!ext?.price) throw new Error('No XAU price extracted');
 
-    const text = `\nGIÁ VÀNG THẾ GIỚI (XAU/USD) - CẬP NHẬT MỚI NHẤT:\n- Giá: ${ext.price} USD/Ounce\n- Thay đổi: ${ext.change || 'N/A'}\n${ext.vndPerOunce ? `- Quy đổi: ~${ext.vndPerOunce} VNĐ/ounce\n` : ''}`;
+    const text = `\nGIÁ VÀNG THẾ GIỚI (XAU/USD) - CẬP NHẬT MỚI NHẤT:\n- Giá: ${ext.price} USD/Ounce\n- Thay đổi: ${ext.change || 'N/A'}\n${ext.updatedAtText ? `- Mốc thời gian: ${ext.updatedAtText}\n` : ''}`;
     worldGoldCache = { data: text, ts: now };
-    console.log("World gold fetched directly:", ext.price);
+    console.log('World gold (TradingView) fetched:', ext.price, ext.change || 'N/A');
     return text;
   } catch (e) {
-    console.error("World gold direct fetch error:", e);
+    console.error('World gold TradingView fetch error:', e);
     return worldGoldCache?.data || '';
   }
 }
 
 async function fetchWorldSilverPrice(): Promise<string> {
   const now = Date.now();
-  if (worldSilverCache && now - worldSilverCache.ts < CACHE_TTL) return worldSilverCache.data;
+  if (worldSilverCache && now - worldSilverCache.ts < 30_000) return worldSilverCache.data;
 
   try {
     const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
@@ -459,21 +459,21 @@ async function fetchWorldSilverPrice(): Promise<string> {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        url: 'https://cafef.vn/du-lieu/gia-bac-hom-nay/the-gioi.chn',
+        url: 'https://www.tradingview.com/symbols/XAGUSD/',
         formats: ['extract'],
         extract: {
-          prompt: 'Extract the world silver spot price XAG/USD. Get the current price in USD per ounce, the change amount with percentage, and VND equivalent per ounce.',
+          prompt: 'Extract current OANDA XAGUSD price from this TradingView page. Also extract day change (value + percent) and last update text if available. Return only exact values shown on page.',
           schema: {
             type: 'object',
             properties: {
-              price: { type: 'string', description: 'Current silver price USD/ounce e.g. "32.45"' },
-              change: { type: 'string', description: 'Change e.g. "+0.15 (0.46%)"' },
-              vndPerOunce: { type: 'string', description: 'VND per ounce e.g. "2,212,426"' },
+              price: { type: 'string', description: 'XAGUSD price like 82.82450' },
+              change: { type: 'string', description: 'Change with percent like -1.62450 (-1.92%)' },
+              updatedAtText: { type: 'string', description: 'Optional market timestamp text' },
             },
             required: ['price'],
           },
         },
-        waitFor: 5000,
+        waitFor: 4000,
       }),
       signal: controller.signal,
     });
@@ -482,14 +482,14 @@ async function fetchWorldSilverPrice(): Promise<string> {
     if (!response.ok) throw new Error(`Firecrawl error ${response.status}`);
     const result = await response.json();
     const ext = result.data?.extract || result.extract;
-    if (!ext?.price) throw new Error('No price extracted');
+    if (!ext?.price) throw new Error('No XAG price extracted');
 
-    const text = `\nGIÁ BẠC THẾ GIỚI (XAG/USD) - CẬP NHẬT MỚI NHẤT:\n- Giá: ${ext.price} USD/Ounce\n- Thay đổi: ${ext.change || 'N/A'}\n${ext.vndPerOunce ? `- Quy đổi: ~${ext.vndPerOunce} VNĐ/ounce\n` : ''}`;
+    const text = `\nGIÁ BẠC THẾ GIỚI (XAG/USD) - CẬP NHẬT MỚI NHẤT:\n- Giá: ${ext.price} USD/Ounce\n- Thay đổi: ${ext.change || 'N/A'}\n${ext.updatedAtText ? `- Mốc thời gian: ${ext.updatedAtText}\n` : ''}`;
     worldSilverCache = { data: text, ts: now };
-    console.log("World silver fetched directly:", ext.price);
+    console.log('World silver (TradingView) fetched:', ext.price, ext.change || 'N/A');
     return text;
   } catch (e) {
-    console.error("World silver direct fetch error:", e);
+    console.error('World silver TradingView fetch error:', e);
     return worldSilverCache?.data || '';
   }
 }
