@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { TrendingUp, TrendingDown, Minus, RefreshCw, BarChart3, Shield, Target, Newspaper, Brain, AlertTriangle } from 'lucide-react';
 
 interface KeyIndicator {
@@ -63,6 +63,9 @@ const MarketAnalysis = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const goldTickerRef = useRef<HTMLDivElement>(null);
+  const silverTickerRef = useRef<HTMLDivElement>(null);
+
   const fetchAnalysis = async () => {
     setLoading(true);
     setError(null);
@@ -81,9 +84,39 @@ const MarketAnalysis = () => {
 
   useEffect(() => {
     fetchAnalysis();
-    const interval = setInterval(() => { fetchAnalysis(); }, 10 * 60 * 1000); // 10 phút
+    const interval = setInterval(() => { fetchAnalysis(); }, 10 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // TradingView widgets for real-time XAU/USD and XAG/USD
+  useEffect(() => {
+    if (goldTickerRef.current && !goldTickerRef.current.querySelector('script')) {
+      const script = document.createElement('script');
+      script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js';
+      script.async = true;
+      script.innerHTML = JSON.stringify({
+        symbol: 'OANDA:XAUUSD',
+        width: '100%',
+        isTransparent: true,
+        colorTheme: 'light',
+        locale: 'vi_VN',
+      });
+      goldTickerRef.current.appendChild(script);
+    }
+    if (silverTickerRef.current && !silverTickerRef.current.querySelector('script')) {
+      const script = document.createElement('script');
+      script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js';
+      script.async = true;
+      script.innerHTML = JSON.stringify({
+        symbol: 'OANDA:XAGUSD',
+        width: '100%',
+        isTransparent: true,
+        colorTheme: 'light',
+        locale: 'vi_VN',
+      });
+      silverTickerRef.current.appendChild(script);
+    }
+  }, [loading]);
 
   return (
     <section id="phan-tich" className="py-12 md:py-16 bg-gradient-to-b from-background to-secondary/20">
@@ -118,28 +151,26 @@ const MarketAnalysis = () => {
           <div className="space-y-6">
             {/* Price Overview Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Gold Price */}
-              <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
+              {/* Gold Price - TradingView Widget */}
+              <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-body text-muted-foreground">XAU/USD</span>
                   <span className="text-xs font-body text-muted-foreground">Vàng thế giới</span>
                 </div>
-                <p className="text-2xl font-display font-bold text-foreground">{data.goldPrice}</p>
-                <p className={`text-sm font-body mt-1 ${data.goldChange?.startsWith('-') ? 'text-red-400' : 'text-emerald-400'}`}>
-                  {data.goldChange}
-                </p>
+                <div ref={goldTickerRef} className="tradingview-widget-container">
+                  <div className="tradingview-widget-container__widget"></div>
+                </div>
               </div>
 
-              {/* Silver Price */}
-              <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
+              {/* Silver Price - TradingView Widget */}
+              <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-body text-muted-foreground">XAG/USD</span>
                   <span className="text-xs font-body text-muted-foreground">Bạc thế giới</span>
                 </div>
-                <p className="text-2xl font-display font-bold text-foreground">{data.silverPrice}</p>
-                <p className={`text-sm font-body mt-1 ${data.silverChange?.startsWith('-') ? 'text-red-400' : 'text-emerald-400'}`}>
-                  {data.silverChange}
-                </p>
+                <div ref={silverTickerRef} className="tradingview-widget-container">
+                  <div className="tradingview-widget-container__widget"></div>
+                </div>
               </div>
 
               {/* Overall Signal */}
