@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getCachedPrice, setCachedPrice } from '@/lib/priceCache';
 
 export interface BrandedGoldPriceItem {
   type: string;
@@ -12,11 +13,12 @@ interface BrandedGoldPriceData {
   source: string;
 }
 
+const CACHE_KEY = 'branded_gold';
 const REFRESH_INTERVAL = 5 * 60 * 1000;
 
 export function useBrandedGoldPrices() {
-  const [data, setData] = useState<BrandedGoldPriceData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<BrandedGoldPriceData | null>(() => getCachedPrice<BrandedGoldPriceData>(CACHE_KEY));
+  const [loading, setLoading] = useState(!getCachedPrice(CACHE_KEY));
   const [error, setError] = useState<string | null>(null);
 
   const fetchPrices = useCallback(async () => {
@@ -28,10 +30,11 @@ export function useBrandedGoldPrices() {
       if (!resp.ok) throw new Error('Failed to fetch');
       const json = await resp.json();
       setData(json);
+      setCachedPrice(CACHE_KEY, json);
       setError(null);
     } catch (e) {
       console.error('Branded gold price fetch error:', e);
-      setError('Không thể tải giá vàng thương hiệu');
+      if (!data) setError('Không thể tải giá vàng thương hiệu');
     } finally {
       setLoading(false);
     }
