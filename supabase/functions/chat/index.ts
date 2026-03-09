@@ -415,7 +415,7 @@ serve(async (req) => {
     const currentTime = getCurrentTime();
 
     // Fetch memory + prices in parallel
-    const [existingMemory, manualGold, manualSilver, autoGold, autoSilver, brandedGold, brandedSilver] = await Promise.all([
+    const [existingMemory, manualGold, manualSilver, autoGold, autoSilver, brandedGold, brandedSilver, worldGold, worldSilver] = await Promise.all([
       getVisitorMemory(visitor_id || ''),
       fetchManualPrices('gold'),
       fetchManualPrices('silver'),
@@ -423,6 +423,8 @@ serve(async (req) => {
       fetchSilverPrices(),
       fetchBrandedGoldPrices(),
       fetchBrandedSilverPrices(),
+      fetchWorldGoldPrice(),
+      fetchWorldSilverPrice(),
     ]);
 
     // Extract new info from current messages and save
