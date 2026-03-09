@@ -18,6 +18,7 @@ const AboutSection = () => {
         .order('sort_order');
       return data || [];
     },
+    staleTime: 10 * 60 * 1000,
   });
 
   const { data: images, isLoading: loadingImages } = useQuery({
@@ -29,6 +30,7 @@ const AboutSection = () => {
         .order('sort_order');
       return data || [];
     },
+    staleTime: 10 * 60 * 1000,
   });
 
   const loading = loadingSections || loadingImages;
