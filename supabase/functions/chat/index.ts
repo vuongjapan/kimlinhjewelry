@@ -83,23 +83,68 @@ async function fetchMarketAnalysisFromDB(): Promise<string> {
     if (!data?.analysis_data) return '';
 
     const a = data.analysis_data as any;
-    let text = '\n--- PHÂN TÍCH KỸ THUẬT THỊ TRƯỜNG (từ Investing.com, AI phân tích) ---\n';
-    text += `Cập nhật: ${a.updatedAt || data.updated_at}\n`;
-    if (a.goldPrice) text += `• Giá vàng XAU/USD: ${a.goldPrice} (${a.goldChange})\n`;
-    if (a.silverPrice) text += `• Giá bạc XAG/USD: ${a.silverPrice} (${a.silverChange})\n`;
-    if (a.overallSignal) text += `• Tín hiệu tổng quan: ${a.overallSignal}\n`;
-    if (a.technicalSummary) text += `• Phân tích: ${a.technicalSummary}\n`;
-    if (a.trendAnalysis) text += `• Xu hướng: ${a.trendAnalysis}\n`;
-    if (a.supportResistance) {
-      const sr = a.supportResistance;
-      text += `• Hỗ trợ: ${sr.support1 || '?'} / ${sr.support2 || '?'} | Kháng cự: ${sr.resistance1 || '?'} / ${sr.resistance2 || '?'}\n`;
+    const raw = a.rawTechnical || {};
+    const indicators = raw.technicalIndicators?.indicators || [];
+    const mas = raw.movingAverages?.averages || [];
+    const pivots = raw.pivotPoints || {};
+
+    let text = '\n\n=== PHÂN TÍCH KỸ THUẬT XAU/USD (từ Investing.com) ===\n';
+    text += `📅 Cập nhật: ${a.updatedAt || data.updated_at}\n`;
+
+    // Giá & biến động
+    if (a.goldPrice) text += `💰 Giá XAU/USD: ${a.goldPrice} USD (${a.goldChange})\n`;
+    if (a.silverPrice) text += `🥈 Giá XAG/USD: ${a.silverPrice} USD (${a.silverChange})\n`;
+
+    // Tín hiệu tổng
+    if (a.overallSignal) text += `\n📊 TÍN HIỆU TỔNG QUAN: ${a.overallSignal}\n`;
+    if (raw.movingAverages?.summary) text += `  • Đường trung bình (MA): ${raw.movingAverages.summary} (Mua: ${raw.movingAverages.buyCount || 0}, Bán: ${raw.movingAverages.sellCount || 0})\n`;
+    if (raw.technicalIndicators?.summary) text += `  • Chỉ báo kỹ thuật: ${raw.technicalIndicators.summary} (Mua: ${raw.technicalIndicators.buyCount || 0}, Bán: ${raw.technicalIndicators.sellCount || 0})\n`;
+
+    // Chỉ báo kỹ thuật quan trọng
+    if (indicators.length > 0) {
+      text += `\n📈 CHỈ BÁO KỸ THUẬT:\n`;
+      for (const ind of indicators.slice(0, 8)) {
+        text += `  • ${ind.name}: ${ind.value} → ${ind.action}\n`;
+      }
     }
-    if (a.geopoliticalImpact) text += `• Địa chính trị: ${a.geopoliticalImpact}\n`;
-    if (a.aiPrediction) text += `• Dự báo AI: ${a.aiPrediction}\n`;
-    if (a.recommendation) text += `• Khuyến nghị: ${a.recommendation}\n`;
-    if (a.silverAnalysis) text += `• Bạc: ${a.silverAnalysis}\n`;
-    if (a.newsHighlights?.length > 0) text += `• Tin nổi bật: ${a.newsHighlights.join(' | ')}\n`;
-    text += '---';
+
+    // Đường MA quan trọng
+    if (mas.length > 0) {
+      text += `\n📉 ĐƯỜNG TRUNG BÌNH (MA):\n`;
+      for (const ma of mas.slice(0, 6)) {
+        text += `  • ${ma.name}: SMA ${ma.simple} (${ma.simpleAction}) | EMA ${ma.exponential} (${ma.exponentialAction})\n`;
+      }
+    }
+
+    // Pivot Points - vùng hỗ trợ/kháng cự
+    if (pivots.pivot) {
+      text += `\n🎯 VÙNG HỖ TRỢ & KHÁNG CỰ (Pivot Points):\n`;
+      if (pivots.r3) text += `  Kháng cự 3: $${pivots.r3}\n`;
+      if (pivots.r2) text += `  Kháng cự 2: $${pivots.r2}\n`;
+      if (pivots.r1) text += `  Kháng cự 1: $${pivots.r1}\n`;
+      text += `  ─── Pivot: $${pivots.pivot} ───\n`;
+      if (pivots.s1) text += `  Hỗ trợ 1: $${pivots.s1}\n`;
+      if (pivots.s2) text += `  Hỗ trợ 2: $${pivots.s2}\n`;
+      if (pivots.s3) text += `  Hỗ trợ 3: $${pivots.s3}\n`;
+    } else if (a.supportResistance) {
+      const sr = a.supportResistance;
+      text += `\n🎯 VÙNG GIÁ QUAN TRỌNG:\n`;
+      if (sr.resistance2) text += `  Kháng cự 2: $${sr.resistance2}\n`;
+      if (sr.resistance1) text += `  Kháng cự 1: $${sr.resistance1}\n`;
+      if (sr.support1) text += `  Hỗ trợ 1: $${sr.support1}\n`;
+      if (sr.support2) text += `  Hỗ trợ 2: $${sr.support2}\n`;
+    }
+
+    // AI phân tích
+    if (a.technicalSummary) text += `\n🔍 PHÂN TÍCH KỸ THUẬT: ${a.technicalSummary}\n`;
+    if (a.trendAnalysis) text += `\n📊 XU HƯỚNG: ${a.trendAnalysis}\n`;
+    if (a.geopoliticalImpact) text += `\n🌏 TÁC ĐỘNG ĐỊA CHÍNH TRỊ: ${a.geopoliticalImpact}\n`;
+    if (a.aiPrediction) text += `\n🤖 DỰ BÁO AI: ${a.aiPrediction}\n`;
+    if (a.recommendation) text += `\n✅ KHUYẾN NGHỊ: ${a.recommendation}\n`;
+    if (a.silverAnalysis) text += `\n🥈 PHÂN TÍCH BẠC: ${a.silverAnalysis}\n`;
+    if (a.newsHighlights?.length > 0) text += `\n📰 TIN NỔI BẬT: ${a.newsHighlights.join(' | ')}\n`;
+
+    text += `\nHƯỚNG DẪN SỬ DỤNG: Khi khách hỏi về xu hướng, phân tích kỹ thuật, nên mua/bán, hỗ trợ/kháng cự → dùng dữ liệu trên. Diễn giải bằng ngôn ngữ đơn giản, tránh thuật ngữ chuyên môn. RSI>70=quá mua (có thể điều chỉnh), RSI<30=quá bán (có thể hồi phục). MA đều Buy=xu hướng tăng mạnh. Pivot Point là vùng giá quan trọng mà nhà đầu tư theo dõi.\n===`;
 
     marketAnalysisCache = { data: text, ts: now };
     return text;
