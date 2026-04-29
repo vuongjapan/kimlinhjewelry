@@ -366,13 +366,35 @@ QUAN TRỌNG: Trả về ĐÚNG JSON format, không markdown, không backticks. 
     });
   } catch (e) {
     console.error("Market analysis error:", e);
-    return new Response(JSON.stringify({ 
+    // Try DB fallback before giving up
+    try {
+      const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      const { data: existing } = await sb
+        .from('market_analysis')
+        .select('analysis_data')
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (existing?.analysis_data) {
+        const fallback = existing.analysis_data as any;
+        fallback.stale = true;
+        fallback.staleReason = 'Đang hiển thị phân tích gần nhất.';
+        return new Response(JSON.stringify(fallback), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } catch (_) {}
+    return new Response(JSON.stringify({
       error: e instanceof Error ? e.message : "Unknown error",
+      fallback: true,
       goldPrice: "N/A",
       overallSignal: "N/A",
       technicalSummary: "Không thể tải dữ liệu phân tích.",
+      keyIndicators: [],
+      supportResistance: {},
+      newsHighlights: [],
     }), {
-      status: 500,
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
