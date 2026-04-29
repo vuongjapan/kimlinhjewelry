@@ -254,7 +254,60 @@ QUAN TRỌNG: Trả về ĐÚNG JSON format, không markdown, không backticks. 
       }),
     });
 
-    if (!aiResponse.ok) throw new Error(`AI gateway error: ${aiResponse.status}`);
+    if (!aiResponse.ok) {
+      // Graceful fallback: try to return last saved analysis from DB
+      const status = aiResponse.status;
+      console.error(`AI gateway error: ${status}`);
+      try {
+        const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: existing } = await sb
+          .from('market_analysis')
+          .select('analysis_data, updated_at')
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (existing?.analysis_data) {
+          const fallback = existing.analysis_data as any;
+          fallback.stale = true;
+          fallback.staleReason = status === 402
+            ? 'Hệ thống AI tạm hết tín dụng, đang hiển thị phân tích gần nhất.'
+            : status === 429
+            ? 'Hệ thống AI đang quá tải, đang hiển thị phân tích gần nhất.'
+            : 'Không thể cập nhật phân tích mới, đang hiển thị dữ liệu gần nhất.';
+          return new Response(JSON.stringify(fallback), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      } catch (dbErr) {
+        console.error('DB fallback failed:', dbErr);
+      }
+      // No cached data — return graceful empty payload (status 200 so client doesn't crash)
+      return new Response(JSON.stringify({
+        error: status === 402 ? 'AI_CREDITS_EXHAUSTED' : status === 429 ? 'AI_RATE_LIMITED' : 'AI_UNAVAILABLE',
+        fallback: true,
+        goldPrice: priceData.price || "N/A",
+        goldChange: priceData.change || "N/A",
+        silverPrice: silverData.price || "N/A",
+        silverChange: silverData.change || "N/A",
+        overallSignal: techData.overallSignal || "N/A",
+        signalColor: "yellow",
+        technicalSummary: status === 402
+          ? "Hệ thống AI tạm hết tín dụng. Vui lòng thử lại sau."
+          : "Đang cập nhật phân tích, vui lòng quay lại sau.",
+        trendAnalysis: "",
+        keyIndicators: [],
+        supportResistance: {},
+        geopoliticalImpact: "",
+        aiPrediction: "",
+        recommendation: "",
+        silverAnalysis: "",
+        newsHighlights: [],
+        disclaimer: "Thông tin chỉ mang tính tham khảo.",
+        updatedAt: new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" }),
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const aiResult = await aiResponse.json();
     let analysisText = aiResult.choices?.[0]?.message?.content || '';
     
