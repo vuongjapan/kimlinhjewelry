@@ -8,6 +8,7 @@ import FloatingButtons from '@/components/FloatingButtons';
 // Lazy load below-fold components
 const AboutSection = lazy(() => import('@/components/AboutSection'));
 const ProductShowcase = lazy(() => import('@/components/ProductShowcase'));
+const GoldPriceChart = lazy(() => import('@/components/GoldPriceChart'));
 const WorldGoldPrice = lazy(() => import('@/components/WorldGoldPrice'));
 const WorldSilverPrice = lazy(() => import('@/components/WorldSilverPrice'));
 const MarketAnalysis = lazy(() => import('@/components/MarketAnalysis'));
@@ -30,6 +31,9 @@ const Index = () => {
       <main>
         <HeroSection />
         <DomesticGoldPriceCard />
+        <Suspense fallback={<SectionFallback />}>
+          <GoldPriceChart />
+        </Suspense>
         <Suspense fallback={<SectionFallback />}>
           <AboutSection />
         </Suspense>
