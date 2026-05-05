@@ -1,21 +1,20 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
 } from 'recharts';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { useGoldPrices } from '@/hooks/useGoldPrices';
 import { useIsMobile } from '@/hooks/use-mobile';
-import {
-  saveGoldPrice, extractCurrentPrice,
-  getStoragePoints, getMonthlyPoints, getQuickStats,
-  formatDate,
-  type GoldPricePoint, type GoldMonthPoint,
-} from '@/utils/gold-price-storage';
 
 /* ── Types ── */
-type TabId = '30P' | '1H' | '1N' | '1T' | '1Th' | '3Th' | '1Y';
+interface HistoryPoint {
+  ts: number;       // unix ms
+  time: string;     // "HH:mm" or "dd/MM"
+  buy: number;
+  sell: number;
+}
 
-interface ChartRow { time: string; buy: number; sell: number }
+type TabId = '30P' | '1H' | '1N' | '1T' | '1Th' | '3Th' | '1Y';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: '30P', label: '30P' },
@@ -30,49 +29,45 @@ const TABS: { id: TabId; label: string }[] = [
 const BUY_COLOR = '#1D9E75';
 const SELL_COLOR = '#D85A30';
 const ACTIVE_BG = '#BA7517';
+const STORAGE_KEY = 'kl_gold_history';
+const MAX_POINTS = 200;
+const MIN_INTERVAL_MS = 10 * 60 * 1000; // don't save more often than 10 min
 
-/* ── Mock data generator ── */
-function generateMockData(tab: TabId): { history: ChartRow[]; current: { buy: number; sell: number }; change: number; high: number; low: number } {
-  const base = 15100;
-  const spread = 150;
-  const now = new Date();
-  const points: ChartRow[] = [];
-
-  const config: Record<TabId, { count: number; labelFn: (i: number) => string; variance: number }> = {
-    '30P': { count: 30, variance: 50, labelFn: (i) => { const d = new Date(now.getTime() - (29 - i) * 60 * 1000); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; } },
-    '1H':  { count: 12, variance: 80, labelFn: (i) => { const d = new Date(now.getTime() - (11 - i) * 5 * 60 * 1000); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; } },
-    '1N':  { count: 13, variance: 100, labelFn: (i) => { const d = new Date(now.getTime() - (12 - i) * 30 * 60 * 1000); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; } },
-    '1T':  { count: 7, variance: 200, labelFn: (i) => { const d = new Date(now.getTime() - (6 - i) * 86400000); return `${d.getDate()}/${d.getMonth() + 1}`; } },
-    '1Th': { count: 30, variance: 300, labelFn: (i) => { const d = new Date(now.getTime() - (29 - i) * 86400000); return `${d.getDate()}/${d.getMonth() + 1}`; } },
-    '3Th': { count: 12, variance: 500, labelFn: (i) => { const d = new Date(now.getTime() - (11 - i) * 7 * 86400000); return `${d.getDate()}/${d.getMonth() + 1}`; } },
-    '1Y':  { count: 12, variance: 800, labelFn: (i) => { const d = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1); return `T${d.getMonth() + 1}/${d.getFullYear()}`; } },
-  };
-
-  const c = config[tab];
-  let prevBuy = base;
-  for (let i = 0; i < c.count; i++) {
-    const drift = (Math.random() - 0.48) * c.variance;
-    const buy = Math.round(prevBuy + drift);
-    const sell = buy + spread;
-    points.push({ time: c.labelFn(i), buy, sell });
-    prevBuy = buy;
-  }
-
-  const last = points[points.length - 1];
-  const first = points[0];
-  const allBuys = points.map(p => p.buy);
-  return {
-    history: points,
-    current: { buy: last.buy, sell: last.sell },
-    change: last.buy - first.buy,
-    high: Math.max(...allBuys),
-    low: Math.min(...allBuys),
-  };
+/* ── localStorage helpers ── */
+function readHistory(): HistoryPoint[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
 }
 
-/* ── Helpers ── */
+function writeHistory(points: HistoryPoint[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(points.slice(-MAX_POINTS)));
+  } catch { /* quota exceeded — ignore */ }
+}
+
+function fmtTime(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function fmtDate(ts: number): string {
+  const d = new Date(ts);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** Parse VN price string "14.950" → 14950 */
+function parsePrice(s: string | number | undefined): number {
+  if (typeof s === 'number') return s;
+  if (!s) return 0;
+  return parseInt(String(s).replace(/[^\d]/g, ''), 10) || 0;
+}
+
 function fmt(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return '—';
+  if (n == null || !Number.isFinite(n) || n === 0) return '—';
   return n.toLocaleString('vi-VN');
 }
 
@@ -81,77 +76,112 @@ const GoldPriceChart = () => {
   const { data: goldData } = useGoldPrices();
   const isMobile = useIsMobile();
   const [tab, setTab] = useState<TabId>('1N');
-  const [tick, setTick] = useState(0);
+  const [history, setHistory] = useState<HistoryPoint[]>(readHistory);
+  const lastSavedRef = useRef<number>(history.length ? history[history.length - 1].ts : 0);
 
-  // Auto-save prices to localStorage
-  useEffect(() => {
-    if (!goldData?.prices?.length) return;
-    const cur = extractCurrentPrice(goldData.prices);
-    if (!cur) return;
-    saveGoldPrice(cur.buy, cur.sell);
-    setTick(t => t + 1);
+  // Extract "Nhẫn Ép Vỉ 9999" (or first valid row) from the same hook powering the price table
+  const current = useMemo(() => {
+    if (!goldData?.prices?.length) return null;
+    // Prioritize 9999 / 24k
+    const ranked = [...goldData.prices].sort((a, b) => {
+      const score = (t: string) => {
+        const x = (t || '').toLowerCase();
+        if (x.includes('9999') || x.includes('24k')) return 0;
+        if (x.includes('nhẫn')) return 1;
+        return 2;
+      };
+      return score(a.type) - score(b.type);
+    });
+    for (const p of ranked) {
+      const buy = parsePrice(p.buy);
+      const sell = parsePrice(p.sell);
+      if (buy > 0 && sell > 0) return { buy, sell };
+    }
+    return null;
   }, [goldData]);
 
-  // Try real data first, fallback to mock
-  const dataset = useMemo(() => {
-    void tick;
-    // Check localStorage for real data
-    const stats = getQuickStats();
-    const hasReal = stats.current != null;
+  // Append to history whenever goldData updates (throttled)
+  useEffect(() => {
+    if (!current) return;
+    const now = Date.now();
+    if (now - lastSavedRef.current < MIN_INTERVAL_MS) return;
 
-    if (!hasReal) return generateMockData(tab);
-
-    // Build from real storage
-    let raw: GoldPricePoint[] = [];
-    switch (tab) {
-      case '30P': raw = getStoragePoints('per30min'); break;
-      case '1H':  raw = getStoragePoints('perHour'); break;
-      case '1N':  raw = getStoragePoints('perDay').slice(-30); break;
-      case '1T': {
-        const w = Date.now() - 7 * 86400000;
-        raw = getStoragePoints('perDay').filter(p => p.timestamp >= w);
-        break;
-      }
-      default: break;
-    }
-
-    if (raw.length < 2) return generateMockData(tab);
-
-    const history: ChartRow[] = raw.map(p => ({
-      time: tab === '30P' || tab === '1H' ? p.datetime.split(' ')[1] : formatDate(p.timestamp).slice(0, 5),
-      buy: p.buyPrice,
-      sell: p.sellPrice,
-    }));
-    const last = history[history.length - 1];
-    const first = history[0];
-    const allBuys = history.map(h => h.buy);
-    return {
-      history,
-      current: { buy: last.buy, sell: last.sell },
-      change: last.buy - first.buy,
-      high: Math.max(...allBuys),
-      low: Math.min(...allBuys),
+    const point: HistoryPoint = {
+      ts: now,
+      time: fmtTime(now),
+      buy: current.buy,
+      sell: current.sell,
     };
-  }, [tab, tick]);
 
-  const changePct = dataset.history.length > 1 && dataset.history[0].buy
-    ? ((dataset.change / dataset.history[0].buy) * 100).toFixed(2)
-    : null;
+    setHistory(prev => {
+      const next = [...prev, point].slice(-MAX_POINTS);
+      writeHistory(next);
+      return next;
+    });
+    lastSavedRef.current = now;
+  }, [current]);
 
-  const historyTable = dataset.history.slice().reverse().slice(0, 8).map((r, i, arr) => {
-    const prev = arr[i + 1];
-    return { ...r, diff: prev ? r.buy - prev.buy : 0 };
-  });
+  // Filter history by selected tab
+  const filtered = useMemo(() => {
+    const now = Date.now();
+    const cutoffs: Record<TabId, number> = {
+      '30P': 30 * 60 * 1000,
+      '1H':  60 * 60 * 1000,
+      '1N':  24 * 60 * 60 * 1000,
+      '1T':  7 * 24 * 60 * 60 * 1000,
+      '1Th': 30 * 24 * 60 * 60 * 1000,
+      '3Th': 90 * 24 * 60 * 60 * 1000,
+      '1Y':  365 * 24 * 60 * 60 * 1000,
+    };
+    const cutoff = now - cutoffs[tab];
+    const pts = history.filter(p => p.ts >= cutoff);
+    // Relabel based on tab
+    const useDate = ['1T', '1Th', '3Th', '1Y'].includes(tab);
+    return pts.map(p => ({ ...p, time: useDate ? fmtDate(p.ts) : fmtTime(p.ts) }));
+  }, [history, tab]);
 
-  // Y-axis domain ± 100
-  const allValues = dataset.history.flatMap(h => [h.buy, h.sell]);
-  const yMin = Math.min(...allValues) - 100;
-  const yMax = Math.max(...allValues) + 100;
+  // Stats
+  const stats = useMemo(() => {
+    const buyNow = current?.buy ?? 0;
+    const sellNow = current?.sell ?? 0;
+    const allBuys = filtered.map(p => p.buy).filter(v => v > 0);
+    const first = filtered[0];
+    const change = first ? buyNow - first.buy : 0;
+    const changePct = first && first.buy ? ((change / first.buy) * 100).toFixed(2) : null;
+    return {
+      buy: buyNow, sell: sellNow, change, changePct,
+      high: allBuys.length ? Math.max(...allBuys, buyNow) : buyNow,
+      low: allBuys.length ? Math.min(...allBuys, buyNow) : buyNow,
+    };
+  }, [current, filtered]);
+
+  // Chart data — include current as last point if not already there
+  const chartData = useMemo(() => {
+    const pts = [...filtered];
+    if (current && (pts.length === 0 || pts[pts.length - 1].buy !== current.buy)) {
+      pts.push({ ts: Date.now(), time: fmtTime(Date.now()), buy: current.buy, sell: current.sell });
+    }
+    return pts;
+  }, [filtered, current]);
+
+  // History table (8 most recent)
+  const historyTable = useMemo(() => {
+    return chartData.slice().reverse().slice(0, 8).map((r, i, arr) => {
+      const prev = arr[i + 1];
+      return { ...r, diff: prev ? r.buy - prev.buy : 0 };
+    });
+  }, [chartData]);
+
+  // Y domain
+  const allVals = chartData.flatMap(h => [h.buy, h.sell]).filter(v => v > 0);
+  const yMin = allVals.length ? Math.min(...allVals) - 100 : 0;
+  const yMax = allVals.length ? Math.max(...allVals) + 100 : 20000;
+
+  const noData = chartData.length < 2;
 
   return (
     <section className="bg-background border-b border-border/50">
       <div className="max-w-5xl mx-auto px-4 py-4 md:py-6">
-        {/* Header */}
         <h2 className="text-lg md:text-xl font-display font-bold text-foreground">
           Lịch Sử & Xu Hướng Giá Vàng
         </h2>
@@ -161,16 +191,16 @@ const GoldPriceChart = () => {
 
         {/* 5 Stat Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-3">
-          <StatCard label="Giá mua" value={fmt(dataset.current.buy)} color={BUY_COLOR} />
-          <StatCard label="Giá bán" value={fmt(dataset.current.sell)} color={SELL_COLOR} />
+          <StatCard label="Giá mua" value={fmt(stats.buy)} color={BUY_COLOR} />
+          <StatCard label="Giá bán" value={fmt(stats.sell)} color={SELL_COLOR} />
           <StatCard
             label="Thay đổi"
-            value={`${dataset.change > 0 ? '+' : ''}${fmt(dataset.change)}`}
-            sub={changePct ? `${Number(changePct) > 0 ? '+' : ''}${changePct}%` : undefined}
-            color={dataset.change > 0 ? BUY_COLOR : dataset.change < 0 ? SELL_COLOR : undefined}
+            value={stats.change === 0 ? '—' : `${stats.change > 0 ? '+' : ''}${fmt(stats.change)}`}
+            sub={stats.changePct ? `${Number(stats.changePct) > 0 ? '+' : ''}${stats.changePct}%` : undefined}
+            color={stats.change > 0 ? BUY_COLOR : stats.change < 0 ? SELL_COLOR : undefined}
           />
-          <StatCard label="Cao nhất" value={fmt(dataset.high)} />
-          <StatCard label="Thấp nhất" value={fmt(dataset.low)} />
+          <StatCard label="Cao nhất" value={fmt(stats.high)} />
+          <StatCard label="Thấp nhất" value={fmt(stats.low)} />
         </div>
 
         <div className="rounded-lg border border-border bg-card overflow-hidden">
@@ -193,38 +223,26 @@ const GoldPriceChart = () => {
 
           {/* Chart */}
           <div className="px-2 md:px-4 py-3">
-            <ResponsiveContainer width="100%" height={isMobile ? 200 : 280}>
-              <LineChart data={dataset.history} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.5} />
-                <XAxis
-                  dataKey="time"
-                  tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                  interval="preserveStartEnd"
-                />
-                <YAxis
-                  tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                  domain={[yMin, yMax]}
-                  tickFormatter={fmt}
-                  width={60}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: 8,
-                    fontSize: 12,
-                  }}
-                  formatter={(v: number, name: string) => [
-                    fmt(v),
-                    name === 'buy' ? 'Giá Mua' : 'Giá Bán',
-                  ]}
-                  labelFormatter={(l) => `🕐 ${l}`}
-                />
-                <Line type="monotone" dataKey="buy" name="buy" stroke={BUY_COLOR} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-                <Line type="monotone" dataKey="sell" name="sell" stroke={SELL_COLOR} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-              </LineChart>
-            </ResponsiveContainer>
-            {/* Legend */}
+            {noData ? (
+              <div className="flex items-center justify-center text-sm text-muted-foreground py-12">
+                📊 Đang thu thập dữ liệu… Biểu đồ sẽ hiển thị sau vài lần cập nhật giá.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={isMobile ? 200 : 280}>
+                <LineChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.5} />
+                  <XAxis dataKey="time" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} interval="preserveStartEnd" />
+                  <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} domain={[yMin, yMax]} tickFormatter={fmt} width={60} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 8, fontSize: 12 }}
+                    formatter={(v: number, name: string) => [fmt(v), name === 'buy' ? 'Giá Mua' : 'Giá Bán']}
+                    labelFormatter={(l) => `🕐 ${l}`}
+                  />
+                  <Line type="monotone" dataKey="buy" name="buy" stroke={BUY_COLOR} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="sell" name="sell" stroke={SELL_COLOR} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
             <div className="flex justify-center gap-6 mt-1 text-xs text-muted-foreground">
               <span className="flex items-center gap-1"><span className="w-3 h-0.5 rounded" style={{ backgroundColor: BUY_COLOR }} /> Giá Mua</span>
               <span className="flex items-center gap-1"><span className="w-3 h-0.5 rounded" style={{ backgroundColor: SELL_COLOR }} /> Giá Bán</span>
@@ -264,7 +282,6 @@ const GoldPriceChart = () => {
             </div>
           )}
 
-          {/* Footer note */}
           <div className="px-3 py-2 border-t border-border/40">
             <p className="text-[10px] md:text-xs text-muted-foreground text-center">
               Đơn vị: nghìn đồng/chỉ · Cập nhật mỗi 30 phút
@@ -276,7 +293,6 @@ const GoldPriceChart = () => {
   );
 };
 
-/* ── Stat Card ── */
 function StatCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
     <div className="bg-secondary/30 rounded-lg px-3 py-2.5">
