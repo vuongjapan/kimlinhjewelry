@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import {
-  ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
+  ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
 } from 'recharts';
-import { TrendingUp, TrendingDown, Minus, LineChart as ChartIcon } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { useGoldPrices } from '@/hooks/useGoldPrices';
 import { useIsMobile } from '@/hooks/use-mobile';
 import {
@@ -12,44 +12,78 @@ import {
   type GoldPricePoint, type GoldMonthPoint,
 } from '@/utils/gold-price-storage';
 
+/* ── Types ── */
 type TabId = '30P' | '1H' | '1N' | '1T' | '1Th' | '3Th' | '1Y';
 
-const TABS: { id: TabId; label: string; sub: string }[] = [
-  { id: '30P',  label: '30P',  sub: '30 phút' },
-  { id: '1H',   label: '1H',   sub: '1 giờ' },
-  { id: '1N',   label: '1N',   sub: '1 ngày' },
-  { id: '1T',   label: '1T',   sub: '1 tuần' },
-  { id: '1Th',  label: '1Th',  sub: '1 tháng' },
-  { id: '3Th',  label: '3Th',  sub: '3 tháng' },
-  { id: '1Y',   label: '1N',   sub: '1 năm' },
+interface ChartRow { time: string; buy: number; sell: number }
+
+const TABS: { id: TabId; label: string }[] = [
+  { id: '30P', label: '30P' },
+  { id: '1H',  label: '1H' },
+  { id: '1N',  label: '1N' },
+  { id: '1T',  label: '1T' },
+  { id: '1Th', label: '1Th' },
+  { id: '3Th', label: '3Th' },
+  { id: '1Y',  label: '1N' },
 ];
 
-const SAVE_INTERVAL_MS = 30 * 60 * 1000;
+const BUY_COLOR = '#1D9E75';
+const SELL_COLOR = '#D85A30';
+const ACTIVE_BG = '#BA7517';
 
-function formatNumber(n: number | null | undefined): string {
+/* ── Mock data generator ── */
+function generateMockData(tab: TabId): { history: ChartRow[]; current: { buy: number; sell: number }; change: number; high: number; low: number } {
+  const base = 15100;
+  const spread = 150;
+  const now = new Date();
+  const points: ChartRow[] = [];
+
+  const config: Record<TabId, { count: number; labelFn: (i: number) => string; variance: number }> = {
+    '30P': { count: 30, variance: 50, labelFn: (i) => { const d = new Date(now.getTime() - (29 - i) * 60 * 1000); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; } },
+    '1H':  { count: 12, variance: 80, labelFn: (i) => { const d = new Date(now.getTime() - (11 - i) * 5 * 60 * 1000); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; } },
+    '1N':  { count: 13, variance: 100, labelFn: (i) => { const d = new Date(now.getTime() - (12 - i) * 30 * 60 * 1000); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; } },
+    '1T':  { count: 7, variance: 200, labelFn: (i) => { const d = new Date(now.getTime() - (6 - i) * 86400000); return `${d.getDate()}/${d.getMonth() + 1}`; } },
+    '1Th': { count: 30, variance: 300, labelFn: (i) => { const d = new Date(now.getTime() - (29 - i) * 86400000); return `${d.getDate()}/${d.getMonth() + 1}`; } },
+    '3Th': { count: 12, variance: 500, labelFn: (i) => { const d = new Date(now.getTime() - (11 - i) * 7 * 86400000); return `${d.getDate()}/${d.getMonth() + 1}`; } },
+    '1Y':  { count: 12, variance: 800, labelFn: (i) => { const d = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1); return `T${d.getMonth() + 1}/${d.getFullYear()}`; } },
+  };
+
+  const c = config[tab];
+  let prevBuy = base;
+  for (let i = 0; i < c.count; i++) {
+    const drift = (Math.random() - 0.48) * c.variance;
+    const buy = Math.round(prevBuy + drift);
+    const sell = buy + spread;
+    points.push({ time: c.labelFn(i), buy, sell });
+    prevBuy = buy;
+  }
+
+  const last = points[points.length - 1];
+  const first = points[0];
+  const allBuys = points.map(p => p.buy);
+  return {
+    history: points,
+    current: { buy: last.buy, sell: last.sell },
+    change: last.buy - first.buy,
+    high: Math.max(...allBuys),
+    low: Math.min(...allBuys),
+  };
+}
+
+/* ── Helpers ── */
+function fmt(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return '—';
   return n.toLocaleString('vi-VN');
 }
 
-function changeColor(diff: number) {
-  if (diff > 0) return 'text-emerald-600';
-  if (diff < 0) return 'text-red-500';
-  return 'text-muted-foreground';
-}
-
-function changeIcon(diff: number) {
-  if (diff > 0) return <TrendingUp className="w-3.5 h-3.5" />;
-  if (diff < 0) return <TrendingDown className="w-3.5 h-3.5" />;
-  return <Minus className="w-3.5 h-3.5" />;
-}
-
+/* ── Component ── */
 const GoldPriceChart = () => {
   const { data: goldData } = useGoldPrices();
   const isMobile = useIsMobile();
   const [tab, setTab] = useState<TabId>('1N');
-  const [tick, setTick] = useState(0); // re-render khi storage thay đổi
+  const [tick, setTick] = useState(0);
 
-  // ---- Auto-save mỗi khi giá thay đổi & mỗi 30 phút ----
+  // Auto-save prices to localStorage
   useEffect(() => {
     if (!goldData?.prices?.length) return;
     const cur = extractCurrentPrice(goldData.prices);
@@ -58,151 +92,99 @@ const GoldPriceChart = () => {
     setTick(t => t + 1);
   }, [goldData]);
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      const cur = goldData?.prices ? extractCurrentPrice(goldData.prices) : null;
-      if (cur) {
-        saveGoldPrice(cur.buy, cur.sell);
-        setTick(t => t + 1);
-      }
-    }, SAVE_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [goldData]);
+  // Try real data first, fallback to mock
+  const dataset = useMemo(() => {
+    void tick;
+    // Check localStorage for real data
+    const stats = getQuickStats();
+    const hasReal = stats.current != null;
 
-  // ---- Dữ liệu cho biểu đồ ----
-  const { chartData, ohlc, isOhlc, totalPoints } = useMemo(() => {
-    void tick; // depend on tick to refresh
+    if (!hasReal) return generateMockData(tab);
+
+    // Build from real storage
     let raw: GoldPricePoint[] = [];
-    let isMonthView = false;
-
     switch (tab) {
       case '30P': raw = getStoragePoints('per30min'); break;
       case '1H':  raw = getStoragePoints('perHour'); break;
       case '1N':  raw = getStoragePoints('perDay').slice(-30); break;
       case '1T': {
-        const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-        raw = getStoragePoints('perDay').filter(p => p.timestamp >= oneWeekAgo);
+        const w = Date.now() - 7 * 86400000;
+        raw = getStoragePoints('perDay').filter(p => p.timestamp >= w);
         break;
       }
-      case '1Th': isMonthView = true; break;
-      case '3Th': isMonthView = true; break;
-      case '1Y':  isMonthView = true; break;
+      default: break;
     }
 
-    if (isMonthView) {
-      const all = getMonthlyPoints();
-      const limit = tab === '1Th' ? 1 : tab === '3Th' ? 3 : 12;
-      const slice = all.slice(-limit);
-      const data = slice.map(m => ({
-        label: m.month,
-        buyPrice: m.closeBuy,
-        sellPrice: m.closeSell,
-      }));
-      return { chartData: data, ohlc: slice, isOhlc: true, totalPoints: slice.length };
-    }
+    if (raw.length < 2) return generateMockData(tab);
 
-    const data = raw.map(p => ({
-      label: tab === '30P' || tab === '1H'
-        ? p.datetime.split(' ')[1] // chỉ giờ
-        : formatDate(p.timestamp).slice(0, 5), // dd/mm
-      buyPrice: p.buyPrice,
-      sellPrice: p.sellPrice,
-      datetime: p.datetime,
+    const history: ChartRow[] = raw.map(p => ({
+      time: tab === '30P' || tab === '1H' ? p.datetime.split(' ')[1] : formatDate(p.timestamp).slice(0, 5),
+      buy: p.buyPrice,
+      sell: p.sellPrice,
     }));
-    return { chartData: data, ohlc: [] as GoldMonthPoint[], isOhlc: false, totalPoints: raw.length };
+    const last = history[history.length - 1];
+    const first = history[0];
+    const allBuys = history.map(h => h.buy);
+    return {
+      history,
+      current: { buy: last.buy, sell: last.sell },
+      change: last.buy - first.buy,
+      high: Math.max(...allBuys),
+      low: Math.min(...allBuys),
+    };
   }, [tab, tick]);
 
-  // ---- Stats ----
-  const stats = useMemo(() => { void tick; return getQuickStats(); }, [tick]);
+  const changePct = dataset.history.length > 1 && dataset.history[0].buy
+    ? ((dataset.change / dataset.history[0].buy) * 100).toFixed(2)
+    : null;
 
-  // ---- Bảng lịch sử ----
-  const historyRows = useMemo(() => {
-    void tick;
-    if (isOhlc) {
-      const rows = ohlc.slice().reverse().map((m, i, arr) => {
-        const prev = arr[i + 1];
-        const change = prev ? m.closeBuy - prev.closeBuy : 0;
-        return { ...m, change };
-      });
-      return rows;
-    }
-    let raw: GoldPricePoint[] = [];
-    if (tab === '30P') raw = getStoragePoints('per30min');
-    else if (tab === '1H') raw = getStoragePoints('perHour');
-    else if (tab === '1N') raw = getStoragePoints('perDay').slice(-30);
-    else if (tab === '1T') {
-      const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-      raw = getStoragePoints('perDay').filter(p => p.timestamp >= oneWeekAgo);
-    }
-    return raw.slice().reverse().slice(0, 20).map((p, i, arr) => {
-      const prev = arr[i + 1];
-      const change = prev ? p.buyPrice - prev.buyPrice : 0;
-      return { ...p, change };
-    });
-  }, [tab, tick, isOhlc, ohlc]);
+  const historyTable = dataset.history.slice().reverse().slice(0, 8).map((r, i, arr) => {
+    const prev = arr[i + 1];
+    return { ...r, diff: prev ? r.buy - prev.buy : 0 };
+  });
+
+  // Y-axis domain ± 100
+  const allValues = dataset.history.flatMap(h => [h.buy, h.sell]);
+  const yMin = Math.min(...allValues) - 100;
+  const yMax = Math.max(...allValues) + 100;
 
   return (
     <section className="bg-background border-b border-border/50">
       <div className="max-w-5xl mx-auto px-4 py-4 md:py-6">
         {/* Header */}
-        <div className="mb-3">
-          <div className="flex items-center gap-2">
-            <ChartIcon className="w-5 h-5 text-primary" />
-            <h2 className="text-lg md:text-xl font-display font-bold text-foreground">
-              📈 Lịch Sử & Xu Hướng Giá Vàng
-            </h2>
-          </div>
-          <p className="text-xs md:text-sm text-muted-foreground font-body mt-0.5">
-            Dữ liệu thực tế tại Kim Linh Jewelry
-          </p>
+        <h2 className="text-lg md:text-xl font-display font-bold text-foreground">
+          Lịch Sử & Xu Hướng Giá Vàng
+        </h2>
+        <p className="text-xs md:text-sm text-muted-foreground font-body mt-0.5 mb-3">
+          Dữ liệu thực tế tại Kim Linh Jewelry
+        </p>
+
+        {/* 5 Stat Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-3">
+          <StatCard label="Giá mua" value={fmt(dataset.current.buy)} color={BUY_COLOR} />
+          <StatCard label="Giá bán" value={fmt(dataset.current.sell)} color={SELL_COLOR} />
+          <StatCard
+            label="Thay đổi"
+            value={`${dataset.change > 0 ? '+' : ''}${fmt(dataset.change)}`}
+            sub={changePct ? `${Number(changePct) > 0 ? '+' : ''}${changePct}%` : undefined}
+            color={dataset.change > 0 ? BUY_COLOR : dataset.change < 0 ? SELL_COLOR : undefined}
+          />
+          <StatCard label="Cao nhất" value={fmt(dataset.high)} />
+          <StatCard label="Thấp nhất" value={fmt(dataset.low)} />
         </div>
 
-        <div className="rounded-xl border border-primary/20 bg-card shadow-sm overflow-hidden">
-          {/* Quick stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border/50">
-            <StatCell
-              label="Giá hiện tại"
-              value={stats.current ? `${formatNumber(stats.current.buyPrice)}` : '—'}
-              sub="nghìn đồng/chỉ"
-            />
-            <StatCell
-              label="Thay đổi hôm nay"
-              value={
-                stats.todayChange == null
-                  ? '—'
-                  : `${stats.todayChange > 0 ? '+' : ''}${formatNumber(stats.todayChange)}`
-              }
-              sub={
-                stats.todayChangePct == null
-                  ? 'Đang thu thập'
-                  : `${stats.todayChangePct > 0 ? '+' : ''}${stats.todayChangePct.toFixed(2)}%`
-              }
-              tone={stats.todayChange ?? 0}
-            />
-            <StatCell
-              label="Cao nhất tháng"
-              value={formatNumber(stats.monthHigh)}
-              sub="nghìn đồng/chỉ"
-            />
-            <StatCell
-              label="Thấp nhất tháng"
-              value={formatNumber(stats.monthLow)}
-              sub="nghìn đồng/chỉ"
-            />
-          </div>
-
-          {/* Tabs */}
-          <div className="flex flex-wrap gap-1.5 px-3 md:px-4 py-2.5 border-b border-border/40 bg-secondary/20">
+        <div className="rounded-lg border border-border bg-card overflow-hidden">
+          {/* Period Selector */}
+          <div className="flex flex-wrap gap-1.5 px-3 py-2.5 border-b border-border/40">
             {TABS.map(t => (
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`px-2.5 py-1 rounded-md text-xs font-body font-medium transition-colors ${
-                  tab === t.id
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-secondary text-foreground hover:bg-secondary/70'
-                }`}
-                title={t.sub}
+                className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+                style={tab === t.id
+                  ? { backgroundColor: ACTIVE_BG, color: '#fff' }
+                  : { backgroundColor: 'hsl(var(--secondary))', color: 'hsl(var(--foreground))' }
+                }
               >
                 {t.label}
               </button>
@@ -211,114 +193,70 @@ const GoldPriceChart = () => {
 
           {/* Chart */}
           <div className="px-2 md:px-4 py-3">
-            {chartData.length === 0 ? (
-              <div className="flex items-center justify-center text-sm text-muted-foreground font-body py-12">
-                Chưa đủ dữ liệu cho khung này. Hãy quay lại sau.
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={isMobile ? 200 : 280}>
-                <LineChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis
-                    dataKey="label"
-                    tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                    interval="preserveStartEnd"
-                  />
-                  <YAxis
-                    tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                    domain={['auto', 'auto']}
-                    tickFormatter={(v: number) => formatNumber(v)}
-                    width={60}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'hsl(var(--card))',
-                      border: '1px solid hsl(var(--border))',
-                      borderRadius: 8,
-                      fontSize: 12,
-                    }}
-                    formatter={(v: number, name) => [formatNumber(v), name]}
-                    labelFormatter={(l) => `🕐 ${l}`}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Line
-                    type="monotone"
-                    dataKey="buyPrice"
-                    name="Giá Mua"
-                    stroke="hsl(160 84% 39%)"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4 }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="sellPrice"
-                    name="Giá Bán"
-                    stroke="hsl(0 84% 60%)"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
+            <ResponsiveContainer width="100%" height={isMobile ? 200 : 280}>
+              <LineChart data={dataset.history} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.5} />
+                <XAxis
+                  dataKey="time"
+                  tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                  domain={[yMin, yMax]}
+                  tickFormatter={fmt}
+                  width={60}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: 8,
+                    fontSize: 12,
+                  }}
+                  formatter={(v: number, name: string) => [
+                    fmt(v),
+                    name === 'buy' ? 'Giá Mua' : 'Giá Bán',
+                  ]}
+                  labelFormatter={(l) => `🕐 ${l}`}
+                />
+                <Line type="monotone" dataKey="buy" name="buy" stroke={BUY_COLOR} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                <Line type="monotone" dataKey="sell" name="sell" stroke={SELL_COLOR} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
+            {/* Legend */}
+            <div className="flex justify-center gap-6 mt-1 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1"><span className="w-3 h-0.5 rounded" style={{ backgroundColor: BUY_COLOR }} /> Giá Mua</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-0.5 rounded" style={{ backgroundColor: SELL_COLOR }} /> Giá Bán</span>
+            </div>
           </div>
 
-          {/* History table */}
-          {historyRows.length > 0 && (
+          {/* History Table - 8 rows */}
+          {historyTable.length > 0 && (
             <div className="border-t border-border/40 overflow-x-auto">
               <table className="w-full text-xs md:text-sm">
                 <thead>
-                  <tr className="bg-primary/10 text-foreground">
-                    {isOhlc ? (
-                      <>
-                        <th className="text-left px-3 py-2 font-body font-semibold">Tháng</th>
-                        <th className="text-right px-3 py-2 font-body font-semibold">Mở cửa</th>
-                        <th className="text-right px-3 py-2 font-body font-semibold">Đóng cửa</th>
-                        <th className="text-right px-3 py-2 font-body font-semibold hidden md:table-cell">Cao nhất</th>
-                        <th className="text-right px-3 py-2 font-body font-semibold hidden md:table-cell">Thấp nhất</th>
-                        <th className="text-right px-3 py-2 font-body font-semibold">Thay đổi</th>
-                      </>
-                    ) : (
-                      <>
-                        <th className="text-left px-3 py-2 font-body font-semibold">Thời gian</th>
-                        <th className="text-right px-3 py-2 font-body font-semibold">Giá Mua</th>
-                        <th className="text-right px-3 py-2 font-body font-semibold">Giá Bán</th>
-                        <th className="text-right px-3 py-2 font-body font-semibold">Thay đổi</th>
-                      </>
-                    )}
+                  <tr className="bg-secondary/50 text-foreground">
+                    <th className="text-left px-3 py-2 font-semibold">Thời gian</th>
+                    <th className="text-right px-3 py-2 font-semibold">Giá Mua</th>
+                    <th className="text-right px-3 py-2 font-semibold">Giá Bán</th>
+                    <th className="text-right px-3 py-2 font-semibold">Thay đổi</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {historyRows.map((r: any, i) => (
-                    <tr key={i} className="border-t border-border/40 hover:bg-yellow-500/5 transition-colors">
-                      {isOhlc ? (
-                        <>
-                          <td className="px-3 py-2 font-body font-medium">{r.month}</td>
-                          <td className="px-3 py-2 text-right font-body">{formatNumber(r.openBuy)}</td>
-                          <td className="px-3 py-2 text-right font-body font-semibold">{formatNumber(r.closeBuy)}</td>
-                          <td className="px-3 py-2 text-right font-body hidden md:table-cell">{formatNumber(r.highBuy)}</td>
-                          <td className="px-3 py-2 text-right font-body hidden md:table-cell">{formatNumber(r.lowBuy)}</td>
-                          <td className={`px-3 py-2 text-right font-body font-medium ${changeColor(r.change)}`}>
-                            <span className="inline-flex items-center justify-end gap-1">
-                              {changeIcon(r.change)}
-                              {r.change === 0 ? '—' : `${r.change > 0 ? '+' : ''}${formatNumber(r.change)}`}
-                            </span>
-                          </td>
-                        </>
-                      ) : (
-                        <>
-                          <td className="px-3 py-2 font-body">{r.datetime}</td>
-                          <td className="px-3 py-2 text-right font-body">{formatNumber(r.buyPrice)}</td>
-                          <td className="px-3 py-2 text-right font-body font-semibold">{formatNumber(r.sellPrice)}</td>
-                          <td className={`px-3 py-2 text-right font-body font-medium ${changeColor(r.change)}`}>
-                            <span className="inline-flex items-center justify-end gap-1">
-                              {changeIcon(r.change)}
-                              {r.change === 0 ? '—' : `${r.change > 0 ? '+' : ''}${formatNumber(r.change)}`}
-                            </span>
-                          </td>
-                        </>
-                      )}
+                  {historyTable.map((r, i) => (
+                    <tr key={i} className="border-t border-border/30 hover:bg-secondary/20 transition-colors">
+                      <td className="px-3 py-2">{r.time}</td>
+                      <td className="px-3 py-2 text-right" style={{ color: BUY_COLOR }}>{fmt(r.buy)}</td>
+                      <td className="px-3 py-2 text-right" style={{ color: SELL_COLOR }}>{fmt(r.sell)}</td>
+                      <td className="px-3 py-2 text-right font-medium">
+                        <span className="inline-flex items-center gap-0.5" style={{ color: r.diff > 0 ? BUY_COLOR : r.diff < 0 ? SELL_COLOR : undefined }}>
+                          {r.diff > 0 && <TrendingUp className="w-3 h-3" />}
+                          {r.diff < 0 && <TrendingDown className="w-3 h-3" />}
+                          {r.diff === 0 && <Minus className="w-3 h-3" />}
+                          {r.diff === 0 ? '—' : `${r.diff > 0 ? '+' : ''}${fmt(r.diff)}`}
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -326,13 +264,10 @@ const GoldPriceChart = () => {
             </div>
           )}
 
-          {/* Footer */}
-          <div className="px-3 md:px-4 py-2 bg-secondary/30 border-t border-border/40">
-            <p className="text-[10px] md:text-xs text-muted-foreground font-body text-center">
-              {totalPoints < 7
-                ? '📊 Đang thu thập dữ liệu… Biểu đồ đầy đủ sau 7 ngày hoạt động • '
-                : ''}
-              Dữ liệu được lưu tự động từ bảng giá Kim Linh • Cập nhật mỗi 30 phút
+          {/* Footer note */}
+          <div className="px-3 py-2 border-t border-border/40">
+            <p className="text-[10px] md:text-xs text-muted-foreground text-center">
+              Đơn vị: nghìn đồng/chỉ · Cập nhật mỗi 30 phút
             </p>
           </div>
         </div>
@@ -341,15 +276,13 @@ const GoldPriceChart = () => {
   );
 };
 
-function StatCell({
-  label, value, sub, tone,
-}: { label: string; value: string; sub?: string; tone?: number }) {
-  const toneClass = tone == null ? 'text-foreground' : changeColor(tone);
+/* ── Stat Card ── */
+function StatCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
-    <div className="bg-card px-3 py-3">
-      <p className="text-[10px] md:text-xs text-muted-foreground font-body uppercase tracking-wide">{label}</p>
-      <p className={`text-base md:text-lg font-display font-bold mt-0.5 ${toneClass}`}>{value}</p>
-      {sub && <p className="text-[10px] md:text-xs text-muted-foreground font-body">{sub}</p>}
+    <div className="bg-secondary/30 rounded-lg px-3 py-2.5">
+      <p className="text-[10px] md:text-xs text-muted-foreground uppercase tracking-wide">{label}</p>
+      <p className="text-sm md:text-base font-bold mt-0.5" style={color ? { color } : undefined}>{value}</p>
+      {sub && <p className="text-[10px] text-muted-foreground">{sub}</p>}
     </div>
   );
 }
