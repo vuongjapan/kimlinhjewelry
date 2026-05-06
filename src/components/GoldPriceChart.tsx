@@ -78,6 +78,7 @@ const GoldPriceChart = () => {
   const [tab, setTab] = useState<TabId>('1N');
   const [history, setHistory] = useState<HistoryPoint[]>(readHistory);
   const lastSavedRef = useRef<number>(history.length ? history[history.length - 1].ts : 0);
+  const [expanded, setExpanded] = useState(false);
 
   // Extract "Nhẫn Ép Vỉ 9999" (or first valid row) from the same hook powering the price table
   const current = useMemo(() => {
@@ -166,11 +167,14 @@ const GoldPriceChart = () => {
 
   // History table (8 most recent)
   const historyTable = useMemo(() => {
-    return chartData.slice().reverse().slice(0, 8).map((r, i, arr) => {
+    return chartData.slice().reverse().slice(0, 15).map((r, i, arr) => {
       const prev = arr[i + 1];
       return { ...r, diff: prev ? r.buy - prev.buy : 0 };
     });
   }, [chartData]);
+
+  const visibleHistory = expanded ? historyTable : historyTable.slice(0, 5);
+  const showChangeCol = historyTable.length >= 2;
 
   // Y domain
   const allVals = chartData.flatMap(h => [h.buy, h.sell]).filter(v => v > 0);
@@ -250,7 +254,7 @@ const GoldPriceChart = () => {
           </div>
 
           {/* History Table - 8 rows */}
-          {historyTable.length > 0 && (
+          {visibleHistory.length > 0 && (
             <div className="border-t border-border/40 overflow-x-auto">
               <table className="w-full text-xs md:text-sm">
                 <thead>
@@ -258,27 +262,38 @@ const GoldPriceChart = () => {
                     <th className="text-left px-3 py-2 font-semibold">Thời gian</th>
                     <th className="text-right px-3 py-2 font-semibold">Giá Mua</th>
                     <th className="text-right px-3 py-2 font-semibold">Giá Bán</th>
-                    <th className="text-right px-3 py-2 font-semibold">Thay đổi</th>
+                    {showChangeCol && <th className="text-right px-3 py-2 font-semibold">Thay đổi</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {historyTable.map((r, i) => (
+                  {visibleHistory.map((r, i) => (
                     <tr key={i} className="border-t border-border/30 hover:bg-secondary/20 transition-colors">
                       <td className="px-3 py-2">{r.time}</td>
                       <td className="px-3 py-2 text-right" style={{ color: BUY_COLOR }}>{fmt(r.buy)}</td>
                       <td className="px-3 py-2 text-right" style={{ color: SELL_COLOR }}>{fmt(r.sell)}</td>
-                      <td className="px-3 py-2 text-right font-medium">
+                      {showChangeCol && <td className="px-3 py-2 text-right font-medium">
                         <span className="inline-flex items-center gap-0.5" style={{ color: r.diff > 0 ? BUY_COLOR : r.diff < 0 ? SELL_COLOR : undefined }}>
                           {r.diff > 0 && <TrendingUp className="w-3 h-3" />}
                           {r.diff < 0 && <TrendingDown className="w-3 h-3" />}
                           {r.diff === 0 && <Minus className="w-3 h-3" />}
                           {r.diff === 0 ? '—' : `${r.diff > 0 ? '+' : ''}${fmt(r.diff)}`}
                         </span>
-                      </td>
+                      </td>}
                     </tr>
                   ))}
                 </tbody>
               </table>
+              {historyTable.length > 5 && (
+                <div className="flex justify-center py-2">
+                  <button
+                    onClick={() => setExpanded(prev => !prev)}
+                    className="px-4 py-1.5 text-xs font-medium text-white rounded-md transition-colors"
+                    style={{ backgroundColor: '#BA7517', borderRadius: 6 }}
+                  >
+                    {expanded ? 'Rút gọn ▲' : 'Xem thêm ▼'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
