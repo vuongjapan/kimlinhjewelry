@@ -296,7 +296,6 @@ const GoldPriceChart = () => {
               {historyTable.length > 5 && (
                 <div className="flex justify-center py-2">
                   <button
-                    onClick={() => setExpanded(prev => !prev)}
                     onClick={() => toggleExpanded()}
                     className="px-4 py-1.5 text-xs font-medium text-white rounded-md transition-colors"
                     style={{ backgroundColor: '#BA7517', borderRadius: 6 }}
