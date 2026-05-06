@@ -1,320 +1,378 @@
-import { useEffect, useRef, useState } from 'react';
-import {
-  TrendingUp, TrendingDown, Minus, BarChart3, Target,
-  Brain, AlertTriangle, Sparkles, Copy, X, Loader2,
-} from 'lucide-react';
-import { goldAnalysisCache, type SignalColor } from '@/data/gold-analysis-cache';
-
-const ANALYSIS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-market-analysis`;
-const AUTH_HEADER = { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` };
-
-function getSignalIcon(signal: string) {
-  const s = signal?.toLowerCase() || '';
-  if (s.includes('mua') || s.includes('tăng')) return <TrendingUp className="w-5 h-5" />;
-  if (s.includes('bán') || s.includes('giảm')) return <TrendingDown className="w-5 h-5" />;
-  return <Minus className="w-5 h-5" />;
-}
-
-function getSignalBg(color: SignalColor) {
-  if (color === 'green') return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30';
-  if (color === 'red') return 'bg-red-500/10 text-red-500 border-red-500/30';
-  return 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30';
-}
-
-function getIndicatorColor(signal: string) {
-  const s = signal?.toLowerCase() || '';
-  if (s.includes('mua') || s.includes('tăng') || s.includes('hỗ trợ')) return 'text-emerald-500';
-  if (s.includes('bán') || s.includes('giảm') || s.includes('kháng cự')) return 'text-red-500';
-  if (s.includes('bùng nổ') || s.includes('yếu')) return 'text-amber-500';
-  return 'text-muted-foreground';
-}
-
-const MarketAnalysis = () => {
-  const data = goldAnalysisCache;
-  const goldTickerRef = useRef<HTMLDivElement>(null);
-  const silverTickerRef = useRef<HTMLDivElement>(null);
-
-  // Admin mode (?admin=true)
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [adminLoading, setAdminLoading] = useState(false);
-  const [adminResult, setAdminResult] = useState<string | null>(null);
-  const [adminError, setAdminError] = useState<string | null>(null);
-  const [showAdminDialog, setShowAdminDialog] = useState(false);
-
-  useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      setIsAdmin(params.get('admin') === 'true');
-    } catch { /* noop */ }
-  }, []);
-
-  // TradingView widgets — miễn phí, giữ nguyên
-  useEffect(() => {
-    if (goldTickerRef.current && !goldTickerRef.current.querySelector('script')) {
-      const script = document.createElement('script');
-      script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js';
-      script.async = true;
-      script.innerHTML = JSON.stringify({
-        symbol: 'OANDA:XAUUSD', width: '100%', isTransparent: true, colorTheme: 'light', locale: 'vi_VN',
-      });
-      goldTickerRef.current.appendChild(script);
-    }
-    if (silverTickerRef.current && !silverTickerRef.current.querySelector('script')) {
-      const script = document.createElement('script');
-      script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js';
-      script.async = true;
-      script.innerHTML = JSON.stringify({
-        symbol: 'OANDA:XAGUSD', width: '100%', isTransparent: true, colorTheme: 'light', locale: 'vi_VN',
-      });
-      silverTickerRef.current.appendChild(script);
-    }
-  }, []);
-
-  const handleAdminGenerate = async () => {
-    setAdminLoading(true);
-    setAdminError(null);
-    setAdminResult(null);
-    setShowAdminDialog(true);
-    try {
-      const res = await fetch(ANALYSIS_URL, { headers: AUTH_HEADER });
-      const json = await res.json().catch(() => ({}));
-      if (json.error && json.fallback) {
-        setAdminError(json.error === 'AI_CREDITS_EXHAUSTED'
-          ? 'AI Gateway đã hết credits. Vui lòng nạp thêm tại Settings → Workspace → Usage.'
-          : 'AI tạm không khả dụng, vui lòng thử lại sau.');
-      } else {
-        // Build a copy-friendly TS snippet for admin
-        const snippet = buildCacheSnippet(json);
-        setAdminResult(snippet);
-      }
-    } catch (e) {
-      console.error('[admin] generate failed:', e);
-      setAdminError('Không gọi được AI. Kiểm tra console.');
-    } finally {
-      setAdminLoading(false);
-    }
-  };
-
-  return (
-    <section id="phan-tich" className="py-12 md:py-16 bg-gradient-to-b from-background to-secondary/20">
-      <div className="container mx-auto px-4 max-w-6xl">
-        {/* Header */}
-        <div className="text-center mb-8 relative">
-          <div className="inline-flex items-center gap-2 bg-primary/10 rounded-full px-4 py-1.5 mb-4">
-            <BarChart3 className="w-4 h-4 text-primary" />
-            <span className="text-sm font-body text-primary font-medium">Phân tích xu hướng tuần</span>
-          </div>
-          <h2 className="font-display text-2xl md:text-3xl font-bold text-foreground mb-2">
-            Phân Tích Xu Hướng Vàng & Bạc
-          </h2>
-          <p className="text-muted-foreground font-body text-sm max-w-xl mx-auto">
-            🕐 Cập nhật: <span className="font-semibold text-foreground">{data.lastUpdated}</span>
-            {' '}• Biểu đồ realtime từ TradingView
-          </p>
-
-          {isAdmin && (
-            <button
-              onClick={handleAdminGenerate}
-              disabled={adminLoading}
-              className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary text-primary-foreground text-sm font-body font-semibold hover:bg-primary/90 disabled:opacity-50"
-            >
-              {adminLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              🔄 Tạo Phân Tích Mới Bằng AI
-            </button>
-          )}
-        </div>
-
-        <div className="space-y-6">
-          {/* Price Overview Cards (TradingView free) + Signal */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-body text-muted-foreground">XAU/USD</span>
-                <span className="text-xs font-body text-muted-foreground">Vàng thế giới</span>
-              </div>
-              <div ref={goldTickerRef} className="tradingview-widget-container">
-                <div className="tradingview-widget-container__widget"></div>
-              </div>
-            </div>
-
-            <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-body text-muted-foreground">XAG/USD</span>
-                <span className="text-xs font-body text-muted-foreground">Bạc thế giới</span>
-              </div>
-              <div ref={silverTickerRef} className="tradingview-widget-container">
-                <div className="tradingview-widget-container__widget"></div>
-              </div>
-            </div>
-
-            <div className={`rounded-xl p-5 border shadow-sm ${getSignalBg(data.signalColor)}`}>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-body opacity-80">Tín hiệu tổng quan</span>
-                {getSignalIcon(data.signal)}
-              </div>
-              <p className="text-2xl font-display font-bold">{data.signal}</p>
-              <p className="text-xs font-body mt-1 opacity-70">Tổng hợp từ chỉ báo kỹ thuật</p>
-            </div>
-          </div>
-
-          {/* Summary */}
-          <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-            <div className="flex items-center gap-2 mb-4">
-              <BarChart3 className="w-5 h-5 text-primary" />
-              <h3 className="font-display font-semibold text-foreground">Tóm tắt phân tích kỹ thuật</h3>
-            </div>
-            <p className="font-body text-foreground/90 leading-relaxed whitespace-pre-line">{data.summary.trim()}</p>
-          </div>
-
-          {/* Price Trend + Indicators */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-              <div className="flex items-center gap-2 mb-4">
-                <TrendingUp className="w-5 h-5 text-primary" />
-                <h3 className="font-display font-semibold text-foreground">Xu hướng giá</h3>
-              </div>
-              <p className="font-body text-foreground/90 leading-relaxed text-sm whitespace-pre-line">
-                {data.priceTrend.trim()}
-              </p>
-            </div>
-
-            <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-              <div className="flex items-center gap-2 mb-4">
-                <BarChart3 className="w-5 h-5 text-primary" />
-                <h3 className="font-display font-semibold text-foreground">Chỉ báo kỹ thuật</h3>
-              </div>
-              <div className="space-y-2.5">
-                {data.indicators.map((ind, i) => (
-                  <div key={i} className="flex items-center justify-between bg-secondary/50 rounded-lg px-3 py-2">
-                    <div>
-                      <p className="font-body font-semibold text-sm text-foreground">{ind.name}</p>
-                      <p className="text-xs font-body text-muted-foreground">{ind.value}</p>
-                    </div>
-                    <span className={`text-xs font-body font-medium ${getIndicatorColor(ind.signal)}`}>
-                      {ind.signal}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Key Factors */}
-          <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-            <div className="flex items-center gap-2 mb-4">
-              <Brain className="w-5 h-5 text-primary" />
-              <h3 className="font-display font-semibold text-foreground">Yếu tố ảnh hưởng tuần này</h3>
-            </div>
-            <ul className="space-y-2">
-              {data.keyFactors.map((f, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <span className="text-primary mt-0.5">•</span>
-                  <span className="font-body text-foreground/85 text-sm">{f}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Recommendation */}
-          <div className="bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 rounded-xl p-6 shadow-sm">
-            <div className="flex items-center gap-2 mb-4">
-              <Target className="w-5 h-5 text-primary" />
-              <h3 className="font-display font-semibold text-foreground">Khuyến nghị</h3>
-            </div>
-            <p className="font-body text-foreground/90 leading-relaxed text-sm whitespace-pre-line">
-              {data.recommendation.trim()}
-            </p>
-          </div>
-
-          {/* Footer */}
-          <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground font-body pt-2">
-            <AlertTriangle className="w-3.5 h-3.5" />
-            <span>Phân tích cập nhật mỗi thứ 2 hàng tuần • Không phải tư vấn tài chính</span>
-          </div>
-        </div>
-
-        {/* Admin dialog */}
-        {showAdminDialog && (
-          <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-card border border-border rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col">
-              <div className="flex items-center justify-between px-5 py-3 border-b border-border">
-                <h4 className="font-display font-semibold text-foreground">🔄 Phân tích AI mới</h4>
-                <button onClick={() => setShowAdminDialog(false)} className="p-1.5 rounded-md hover:bg-secondary">
-                  <X className="w-4 h-4 text-muted-foreground" />
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-5 space-y-3">
-                {adminLoading && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Đang gọi AI...
-                  </div>
-                )}
-                {adminError && (
-                  <div className="text-sm text-red-500 font-body">{adminError}</div>
-                )}
-                {adminResult && (
-                  <>
-                    <p className="text-sm text-muted-foreground font-body">
-                      Copy đoạn dưới và dán vào <code className="bg-secondary px-1 rounded">src/data/gold-analysis-cache.ts</code>:
-                    </p>
-                    <pre className="bg-secondary/50 border border-border rounded-lg p-3 text-xs font-mono whitespace-pre-wrap break-words max-h-[50vh] overflow-auto">
-{adminResult}
-                    </pre>
-                  </>
-                )}
-              </div>
-              {adminResult && (
-                <div className="px-5 py-3 border-t border-border flex justify-end">
-                  <button
-                    onClick={() => navigator.clipboard?.writeText(adminResult)}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-body font-semibold hover:bg-primary/90"
-                  >
-                    <Copy className="w-4 h-4" /> Copy
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </section>
-  );
-};
-
-// Convert AI response to a cache.ts snippet that admin can paste in
-function buildCacheSnippet(ai: any): string {
-  const today = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  const indicators = Array.isArray(ai?.keyIndicators) && ai.keyIndicators.length
-    ? ai.keyIndicators.map((i: any) => `    { name: ${JSON.stringify(i.name || '')}, value: ${JSON.stringify(i.value || '')}, signal: ${JSON.stringify(i.signal || '')} },`).join('\n')
-    : `    { name: 'RSI (14)', value: '—', signal: 'Trung lập' },`;
-
-  const factors = Array.isArray(ai?.newsHighlights) && ai.newsHighlights.length
-    ? ai.newsHighlights.map((n: string) => `    ${JSON.stringify(n)},`).join('\n')
-    : `    'Cập nhật yếu tố tuần này',`;
-
-  return `lastUpdated: '${today}',
-signal: ${JSON.stringify(ai?.overallSignal || 'Tích lũy')},
-signalColor: ${JSON.stringify(ai?.signalColor || 'yellow')},
-
-summary: \`
-  ${(ai?.technicalSummary || '').toString().trim()}
-\`,
-
-priceTrend: \`
-  ${(ai?.trendAnalysis || '').toString().trim()}
-\`,
-
-keyFactors: [
-${factors}
-],
-
-recommendation: \`
-  ${(ai?.recommendation || '').toString().trim()}
-\`,
-
-indicators: [
-${indicators}
-],`;
-}
-
-export default MarketAnalysis;
+ import { useEffect, useState } from 'react';
+ import {
+   TrendingUp, TrendingDown, Minus, BarChart3,
+   AlertTriangle, Loader2, RefreshCw, Newspaper, Globe,
+ } from 'lucide-react';
+ import { useAdmin } from '@/hooks/useAdmin';
+ import { Skeleton } from '@/components/ui/skeleton';
+ 
+ const API_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-market-analysis`;
+ const AUTH = { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`, 'Content-Type': 'application/json' };
+ 
+ type Indicator = { name: string; value: string; signal: string; group?: string };
+ type MetalData = {
+   price: number; change: number; change_pct: number;
+   high_24h: number; low_24h: number; trend: string; signal: string;
+   short_trend?: string; mid_trend?: string; long_trend?: string;
+   indicators: Indicator[]; support: number[]; resistance: number[];
+   summary: string;
+ };
+ type NewsItem = { title: string; impact: string; detail: string };
+ type MacroData = { fed_rate: string; usd_index: string; president_policy: string; geopolitical: string };
+ type AnalysisRow = {
+   id: string; created_at: string;
+   gold_data: MetalData; silver_data: MetalData;
+   news_data: { news: NewsItem[]; macro: MacroData };
+ };
+ 
+ const signalColor = (s: string) => {
+   const l = s?.toLowerCase() || '';
+   if (l.includes('mua mạnh')) return 'bg-[#1D9E75]/15 text-[#1D9E75] border-[#1D9E75]/30';
+   if (l.includes('mua')) return 'bg-[#1D9E75]/10 text-[#1D9E75] border-[#1D9E75]/20';
+   if (l.includes('bán mạnh')) return 'bg-[#D85A30]/15 text-[#D85A30] border-[#D85A30]/30';
+   if (l.includes('bán')) return 'bg-[#D85A30]/10 text-[#D85A30] border-[#D85A30]/20';
+   return 'bg-[#888780]/10 text-[#888780] border-[#888780]/20';
+ };
+ 
+ const signalBadge = (s: string) => {
+   const l = s?.toLowerCase() || '';
+   if (l.includes('mua')) return 'bg-[#1D9E75]/15 text-[#1D9E75]';
+   if (l.includes('bán')) return 'bg-[#D85A30]/15 text-[#D85A30]';
+   return 'bg-[#888780]/10 text-[#888780]';
+ };
+ 
+ const trendBadge = (t: string) => {
+   const l = t?.toLowerCase() || '';
+   if (l.includes('tăng')) return { color: 'bg-[#1D9E75]/10 text-[#1D9E75]', icon: <TrendingUp className="w-3 h-3" /> };
+   if (l.includes('giảm')) return { color: 'bg-[#D85A30]/10 text-[#D85A30]', icon: <TrendingDown className="w-3 h-3" /> };
+   return { color: 'bg-[#888780]/10 text-[#888780]', icon: <Minus className="w-3 h-3" /> };
+ };
+ 
+ const impactBadge = (i: string) => {
+   const l = i?.toLowerCase() || '';
+   if (l.includes('tích cực')) return 'bg-[#1D9E75]/10 text-[#1D9E75]';
+   if (l.includes('tiêu cực')) return 'bg-[#D85A30]/10 text-[#D85A30]';
+   return 'bg-[#888780]/10 text-[#888780]';
+ };
+ 
+ function IndicatorTable({ indicators }: { indicators: Indicator[] }) {
+   const groups = [
+     { label: 'Đường trung bình', key: 'ma', items: indicators.filter(i => i.group === 'ma') },
+     { label: 'Dao động', key: 'oscillator', items: indicators.filter(i => i.group === 'oscillator') },
+     { label: 'Xu hướng', key: 'trend', items: indicators.filter(i => i.group === 'trend') },
+   ];
+   // Put ungrouped into trend
+   const grouped = new Set(groups.flatMap(g => g.items.map(i => i.name)));
+   const ungrouped = indicators.filter(i => !grouped.has(i.name));
+   if (ungrouped.length) groups[2].items.push(...ungrouped);
+ 
+   const counts = { mua: 0, ban: 0, tl: 0 };
+   indicators.forEach(i => {
+     const l = i.signal?.toLowerCase() || '';
+     if (l.includes('mua')) counts.mua++;
+     else if (l.includes('bán')) counts.ban++;
+     else counts.tl++;
+   });
+ 
+   return (
+     <div className="space-y-3">
+       {groups.map(g => g.items.length > 0 && (
+         <div key={g.key}>
+           <h4 className="text-xs font-semibold text-[#BA7517] mb-1.5 uppercase tracking-wide">{g.label}</h4>
+           <div className="space-y-1">
+             {g.items.map((ind, i) => (
+               <div key={i} className="flex items-center justify-between py-1 px-2 rounded bg-secondary/40 text-[13px]">
+                 <span className="font-medium text-foreground truncate max-w-[40%]">{ind.name}</span>
+                 <span className="font-mono text-muted-foreground">{ind.value}</span>
+                 <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${signalBadge(ind.signal)}`}>
+                   {ind.signal}
+                 </span>
+               </div>
+             ))}
+           </div>
+         </div>
+       ))}
+       <div className="flex items-center justify-center gap-4 pt-2 text-xs font-medium">
+         <span className="text-[#1D9E75]">Mua: {counts.mua}</span>
+         <span className="text-[#888780]">Trung lập: {counts.tl}</span>
+         <span className="text-[#D85A30]">Bán: {counts.ban}</span>
+       </div>
+     </div>
+   );
+ }
+ 
+ function MetalSection({ data, label }: { data: MetalData; label: string }) {
+   const isUp = (data.change || 0) >= 0;
+   const short = trendBadge(data.short_trend || data.trend);
+   const mid = trendBadge(data.mid_trend || '');
+   const long = trendBadge(data.long_trend || '');
+ 
+   return (
+     <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+       <h3 className="font-display font-bold text-lg text-[#BA7517] mb-4">{label}</h3>
+       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+         {/* Left column */}
+         <div className="space-y-4">
+           {/* Price */}
+           <div>
+             <div className="flex items-baseline gap-3">
+               <span className="text-3xl font-bold font-mono text-foreground">
+                 ${typeof data.price === 'number' ? data.price.toLocaleString('en-US', { minimumFractionDigits: 2 }) : data.price}
+               </span>
+               <span className={`text-lg font-semibold font-mono ${isUp ? 'text-[#1D9E75]' : 'text-[#D85A30]'}`}>
+                 {isUp ? '+' : ''}{data.change} ({isUp ? '+' : ''}{data.change_pct}%)
+               </span>
+             </div>
+             <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
+               <span>H: ${data.high_24h}</span>
+               <span>L: ${data.low_24h}</span>
+             </div>
+           </div>
+ 
+           {/* Signal */}
+           <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full border font-semibold ${signalColor(data.signal)}`}>
+             {data.signal?.toLowerCase().includes('mua') ? <TrendingUp className="w-4 h-4" /> :
+              data.signal?.toLowerCase().includes('bán') ? <TrendingDown className="w-4 h-4" /> :
+              <Minus className="w-4 h-4" />}
+             {data.signal}
+           </div>
+ 
+           {/* Trends */}
+           <div className="flex gap-2 flex-wrap">
+             {[{ label: 'Ngắn hạn', ...short }, { label: 'Trung hạn', ...mid }, { label: 'Dài hạn', ...long }].map((t, i) => (
+               <span key={i} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${t.color}`}>
+                 {t.icon} {t.label}
+               </span>
+             ))}
+           </div>
+ 
+           {/* Support/Resistance */}
+           <div className="grid grid-cols-2 gap-2 text-xs">
+             <div className="bg-[#1D9E75]/5 rounded-lg p-2">
+               <div className="text-[#1D9E75] font-medium mb-1">Hỗ trợ</div>
+               {data.support?.map((s, i) => (
+                 <div key={i} className="font-mono text-foreground">S{i + 1}: ${s}</div>
+               ))}
+             </div>
+             <div className="bg-[#D85A30]/5 rounded-lg p-2">
+               <div className="text-[#D85A30] font-medium mb-1">Kháng cự</div>
+               {data.resistance?.map((r, i) => (
+                 <div key={i} className="font-mono text-foreground">R{i + 1}: ${r}</div>
+               ))}
+             </div>
+           </div>
+ 
+           {/* Summary */}
+           <p className="text-sm text-foreground/85 leading-relaxed">{data.summary}</p>
+         </div>
+ 
+         {/* Right column: indicators */}
+         <div className="max-h-[500px] overflow-y-auto pr-1">
+           <IndicatorTable indicators={data.indicators || []} />
+         </div>
+       </div>
+     </div>
+   );
+ }
+ 
+ function LoadingSkeleton() {
+   return (
+     <div className="space-y-4">
+       <Skeleton className="h-8 w-64 mx-auto" />
+       <Skeleton className="h-4 w-48 mx-auto" />
+       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+         <Skeleton className="h-[400px] rounded-xl" />
+         <Skeleton className="h-[400px] rounded-xl" />
+       </div>
+     </div>
+   );
+ }
+ 
+ const MarketAnalysis = () => {
+   const { isAdmin } = useAdmin();
+   const [data, setData] = useState<AnalysisRow | null>(null);
+   const [loading, setLoading] = useState(true);
+   const [generating, setGenerating] = useState(false);
+   const [error, setError] = useState<string | null>(null);
+   const [tab, setTab] = useState<'gold' | 'silver'>('gold');
+ 
+   const fetchData = async () => {
+     try {
+       setLoading(true);
+       const res = await fetch(API_URL, { method: 'POST', headers: AUTH, body: JSON.stringify({ mode: 'read' }) });
+       const json = await res.json();
+       if (json && json.gold_data) setData(json);
+       else setData(null);
+     } catch (e) {
+       console.error(e);
+     } finally {
+       setLoading(false);
+     }
+   };
+ 
+   const handleGenerate = async () => {
+     setGenerating(true);
+     setError(null);
+     try {
+       const res = await fetch(API_URL, { method: 'POST', headers: AUTH, body: JSON.stringify({ mode: 'generate' }) });
+       const json = await res.json();
+       if (json.error) {
+         setError(json.error === 'AI_CREDITS_EXHAUSTED'
+           ? 'AI hết credits. Vui lòng nạp thêm.'
+           : json.error === 'AI_RATE_LIMITED'
+           ? 'AI đang quá tải, thử lại sau.'
+           : `Lỗi: ${json.error}`);
+       } else if (json.gold_data) {
+         setData(json);
+       } else {
+         await fetchData();
+       }
+     } catch (e) {
+       setError('Không thể kết nối. Kiểm tra mạng.');
+     } finally {
+       setGenerating(false);
+     }
+   };
+ 
+   useEffect(() => { fetchData(); }, []);
+ 
+   const updatedAt = data?.created_at
+     ? new Date(data.created_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })
+     : null;
+ 
+   return (
+     <section id="phan-tich" className="py-12 md:py-16 bg-gradient-to-b from-background to-secondary/20">
+       <div className="container mx-auto px-4 max-w-6xl">
+         {/* Header */}
+         <div className="text-center mb-8">
+           <div className="inline-flex items-center gap-2 bg-primary/10 rounded-full px-4 py-1.5 mb-4">
+             <BarChart3 className="w-4 h-4 text-primary" />
+             <span className="text-sm font-body text-primary font-medium">Phân tích chuyên sâu</span>
+           </div>
+           <h2 className="font-display text-2xl md:text-3xl font-bold text-foreground mb-2">
+             Phân Tích Xu Hướng Vàng & Bạc
+           </h2>
+           {updatedAt && (
+             <p className="text-muted-foreground font-body text-sm">
+               🕐 Cập nhật lúc: <span className="font-semibold text-foreground">{updatedAt}</span>
+             </p>
+           )}
+ 
+           {isAdmin && (
+             <button
+               onClick={handleGenerate}
+               disabled={generating}
+               className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#BA7517] text-white text-sm font-semibold hover:bg-[#BA7517]/90 disabled:opacity-50 transition-colors"
+             >
+               {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+               {generating ? 'Đang phân tích...' : '🔄 Cập nhật phân tích'}
+             </button>
+           )}
+           {error && <p className="text-sm text-[#D85A30] mt-2">{error}</p>}
+         </div>
+ 
+         {loading ? (
+           <LoadingSkeleton />
+         ) : !data ? (
+           <div className="text-center py-16">
+             <p className="text-muted-foreground mb-4">Chưa có dữ liệu phân tích.</p>
+             {isAdmin && (
+               <button
+                 onClick={handleGenerate}
+                 disabled={generating}
+                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#BA7517] text-white text-sm font-semibold hover:bg-[#BA7517]/90 disabled:opacity-50"
+               >
+                 {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                 {generating ? 'Đang phân tích...' : 'Cập nhật lần đầu'}
+               </button>
+             )}
+           </div>
+         ) : (
+           <div className="space-y-6">
+             {/* Tab selector */}
+             <div className="flex justify-center gap-2">
+               <button
+                 onClick={() => setTab('gold')}
+                 className={`px-5 py-2 rounded-full text-sm font-semibold transition-colors ${
+                   tab === 'gold' ? 'bg-[#BA7517] text-white' : 'bg-secondary text-foreground hover:bg-secondary/80'
+                 }`}
+               >
+                 🥇 Vàng (XAU/USD)
+               </button>
+               <button
+                 onClick={() => setTab('silver')}
+                 className={`px-5 py-2 rounded-full text-sm font-semibold transition-colors ${
+                   tab === 'silver' ? 'bg-[#BA7517] text-white' : 'bg-secondary text-foreground hover:bg-secondary/80'
+                 }`}
+               >
+                 🥈 Bạc (XAG/USD)
+               </button>
+             </div>
+ 
+             {/* Metal section */}
+             {tab === 'gold' && data.gold_data && (
+               <MetalSection data={data.gold_data} label="Vàng — XAU/USD" />
+             )}
+             {tab === 'silver' && data.silver_data && (
+               <MetalSection data={data.silver_data} label="Bạc — XAG/USD" />
+             )}
+ 
+             {/* News */}
+             {data.news_data?.news?.length > 0 && (
+               <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+                 <div className="flex items-center gap-2 mb-4">
+                   <Newspaper className="w-5 h-5 text-[#BA7517]" />
+                   <h3 className="font-display font-semibold text-[#BA7517]">Tin tức ảnh hưởng hôm nay</h3>
+                 </div>
+                 <div className="space-y-3">
+                   {data.news_data.news.map((n, i) => (
+                     <div key={i} className="flex items-start gap-3">
+                       <span className={`mt-0.5 px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap ${impactBadge(n.impact)}`}>
+                         {n.impact}
+                       </span>
+                       <div>
+                         <p className="text-sm font-medium text-foreground">{n.title}</p>
+                         <p className="text-xs text-muted-foreground mt-0.5">{n.detail}</p>
+                       </div>
+                     </div>
+                   ))}
+                 </div>
+               </div>
+             )}
+ 
+             {/* Macro */}
+             {data.news_data?.macro && (
+               <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+                 <div className="flex items-center gap-2 mb-4">
+                   <Globe className="w-5 h-5 text-[#BA7517]" />
+                   <h3 className="font-display font-semibold text-[#BA7517]">Vĩ mô</h3>
+                 </div>
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                   {[
+                     { label: 'Lãi suất Fed', value: data.news_data.macro.fed_rate },
+                     { label: 'USD Index', value: data.news_data.macro.usd_index },
+                     { label: 'Chính sách TT Mỹ', value: data.news_data.macro.president_policy },
+                     { label: 'Địa chính trị', value: data.news_data.macro.geopolitical },
+                   ].map((m, i) => (
+                     <div key={i} className="bg-secondary/40 rounded-lg px-3 py-2">
+                       <span className="text-xs text-muted-foreground">{m.label}</span>
+                       <p className="text-foreground font-medium text-[13px] mt-0.5">{m.value}</p>
+                     </div>
+                   ))}
+                 </div>
+               </div>
+             )}
+ 
+             {/* Footer */}
+             <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground font-body pt-2">
+               <AlertTriangle className="w-3.5 h-3.5" />
+               <span>Phân tích bằng AI • Không phải tư vấn tài chính</span>
+             </div>
+           </div>
+         )}
+       </div>
+     </section>
+   );
+ };
+ 
+ export default MarketAnalysis;
