@@ -103,6 +103,33 @@ export type Database = {
         }
         Relationships: []
       }
+      gold_analysis: {
+        Row: {
+          created_at: string
+          gold_data: Json
+          id: string
+          news_data: Json
+          silver_data: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          gold_data?: Json
+          id?: string
+          news_data?: Json
+          silver_data?: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          gold_data?: Json
+          id?: string
+          news_data?: Json
+          silver_data?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
       knowledge_articles: {
         Row: {
           content: string | null
