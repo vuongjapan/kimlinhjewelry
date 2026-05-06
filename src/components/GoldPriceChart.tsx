@@ -78,7 +78,17 @@ const GoldPriceChart = () => {
   const [tab, setTab] = useState<TabId>('1N');
   const [history, setHistory] = useState<HistoryPoint[]>(readHistory);
   const lastSavedRef = useRef<number>(history.length ? history[history.length - 1].ts : 0);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(() => {
+    try { return localStorage.getItem('kl_history_expanded') === '1'; } catch { return false; }
+  });
+
+  const toggleExpanded = () => {
+    setExpanded(prev => {
+      const next = !prev;
+      try { localStorage.setItem('kl_history_expanded', next ? '1' : '0'); } catch {}
+      return next;
+    });
+  };
 
   // Extract "Nhẫn Ép Vỉ 9999" (or first valid row) from the same hook powering the price table
   const current = useMemo(() => {
@@ -267,7 +277,7 @@ const GoldPriceChart = () => {
                 </thead>
                 <tbody>
                   {visibleHistory.map((r, i) => (
-                    <tr key={i} className="border-t border-border/30 hover:bg-secondary/20 transition-colors">
+                    <tr key={i} className={`border-t border-border/30 transition-colors ${i === 0 ? 'bg-[#BA7517]/10' : 'hover:bg-secondary/20'}`}>
                       <td className="px-3 py-2">{r.time}</td>
                       <td className="px-3 py-2 text-right" style={{ color: BUY_COLOR }}>{fmt(r.buy)}</td>
                       <td className="px-3 py-2 text-right" style={{ color: SELL_COLOR }}>{fmt(r.sell)}</td>
@@ -286,7 +296,7 @@ const GoldPriceChart = () => {
               {historyTable.length > 5 && (
                 <div className="flex justify-center py-2">
                   <button
-                    onClick={() => setExpanded(prev => !prev)}
+                    onClick={() => toggleExpanded()}
                     className="px-4 py-1.5 text-xs font-medium text-white rounded-md transition-colors"
                     style={{ backgroundColor: '#BA7517', borderRadius: 6 }}
                   >
