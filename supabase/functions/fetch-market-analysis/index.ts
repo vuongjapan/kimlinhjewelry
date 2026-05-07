@@ -10,74 +10,129 @@
    return createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
  }
  
- const today = () => new Date().toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", year: "numeric" });
- const nowVN = () => new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
- 
- const PROMPT = `Hôm nay ${today()}. Bạn là chuyên gia phân tích tài chính vàng bạc hàng đầu.
- 
- Hãy phân tích thị trường vàng bạc dựa trên kiến thức mới nhất của bạn:
- 
- 1. Giá XAU/USD ước tính hiện tại và xu hướng gần nhất
- 2. Giá XAG/USD ước tính hiện tại
- 3. 24 chỉ số kỹ thuật cho vàng: RSI(14), MACD, MA20, MA50, MA200, Bollinger Bands, Stochastic, ATR, CCI, Williams %R, Momentum, ROC, OBV, MFI, Parabolic SAR, Ichimoku, ADX, Aroon, VWAP, Pivot Point, Support 1, Support 2, Resistance 1, Resistance 2
- 4. Tin tức địa chính trị ảnh hưởng giá vàng (chiến tranh, căng thẳng, chính sách Fed, thuế quan)
- 5. Chính sách tổng thống Mỹ, thuế quan mới nhất
- 6. Xu hướng ngắn/trung/dài hạn
- 
- Trả về JSON thuần túy (KHÔNG markdown, KHÔNG backticks):
- {
-   "gold": {
-     "price": number,
-     "change": number,
-     "change_pct": number,
-     "high_24h": number,
-     "low_24h": number,
-     "trend": "tăng|giảm|đi ngang",
-     "signal": "mua mạnh|mua|trung lập|bán|bán mạnh",
-     "short_trend": "tăng|giảm|đi ngang",
-     "mid_trend": "tăng|giảm|đi ngang",
-     "long_trend": "tăng|giảm|đi ngang",
-     "indicators": [
-       { "name": "RSI(14)", "value": "55.3", "signal": "mua|bán|trung lập", "group": "oscillator" },
-       { "name": "MACD", "value": "12.5", "signal": "mua|bán|trung lập", "group": "trend" },
-       ... 24 chỉ số, group: "ma" cho đường trung bình, "oscillator" cho dao động, "trend" cho xu hướng
-     ],
-     "support": [number, number],
-     "resistance": [number, number],
-     "summary": "3-4 câu phân tích chuyên sâu bằng tiếng Việt"
-   },
-   "silver": {
-     "price": number,
-     "change": number,
-     "change_pct": number,
-     "high_24h": number,
-     "low_24h": number,
-     "trend": "tăng|giảm|đi ngang",
-     "signal": "mua mạnh|mua|trung lập|bán|bán mạnh",
-     "short_trend": "tăng|giảm|đi ngang",
-     "mid_trend": "tăng|giảm|đi ngang",
-     "long_trend": "tăng|giảm|đi ngang",
-     "indicators": [
-       { "name": "RSI(14)", "value": "48.2", "signal": "mua|bán|trung lập", "group": "oscillator" }
-       ... 24 chỉ số
-     ],
-     "support": [number, number],
-     "resistance": [number, number],
-     "summary": "3-4 câu phân tích"
-   },
-   "news": [
-     { "title": "string", "impact": "tích cực|tiêu cực|trung lập", "detail": "1-2 câu" }
-     ... 5-7 tin
-   ],
-   "macro": {
-     "fed_rate": "string",
-     "usd_index": "string",
-     "president_policy": "string",
-     "geopolitical": "string"
-   }
- }
- 
- QUAN TRỌNG: Trả về JSON thuần túy. Giá trị indicators phải là số hoặc chuỗi số. Tất cả text bằng tiếng Việt. Phải có đủ 24 chỉ số cho cả vàng và bạc.`;
+const today = () => new Date().toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", year: "numeric" });
+const nowVN = () => new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+
+// Step 1: Scrape real prices from investing.com via Firecrawl
+async function scrapeRealPrices(): Promise<{ goldText: string; silverText: string }> {
+  const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY");
+  if (!FIRECRAWL_API_KEY) throw new Error("FIRECRAWL_API_KEY not configured");
+
+  const scrape = async (url: string): Promise<string> => {
+    const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${FIRECRAWL_API_KEY}`,
+      },
+      body: JSON.stringify({
+        url,
+        formats: ["markdown"],
+        onlyMainContent: true,
+        waitFor: 3000,
+      }),
+    });
+    if (!res.ok) {
+      console.error(`Firecrawl error for ${url}: ${res.status}`);
+      return "";
+    }
+    const json = await res.json();
+    return json?.data?.markdown || "";
+  };
+
+  const [goldText, silverText] = await Promise.all([
+    scrape("https://vn.investing.com/currencies/xau-usd"),
+    scrape("https://vn.investing.com/currencies/xag-usd"),
+  ]);
+
+  console.log("Scraped gold length:", goldText.length, "silver length:", silverText.length);
+  return { goldText, silverText };
+}
+
+function buildPrompt(goldText: string, silverText: string): string {
+  const todayStr = today();
+  return `Hôm nay ${todayStr}. Bạn là chuyên gia phân tích tài chính vàng bạc hàng đầu.
+
+DỮ LIỆU THỰC TẾ VỪA SCRAPE TỪ INVESTING.COM (${todayStr}):
+
+--- XAU/USD ---
+${goldText.slice(0, 4000)}
+
+--- XAG/USD ---
+${silverText.slice(0, 4000)}
+
+Dựa trên dữ liệu THỰC TẾ ở trên, hãy phân tích và trả về JSON thuần túy (KHÔNG markdown, KHÔNG backticks):
+{
+  "gold": {
+    "price": <giá XAU/USD CHÍNH XÁC từ dữ liệu trên, phải > 3000>,
+    "change": <thay đổi>,
+    "change_pct": <phần trăm thay đổi>,
+    "high_24h": <cao nhất 24h>,
+    "low_24h": <thấp nhất 24h>,
+    "trend": "tăng|giảm|đi ngang",
+    "signal": "mua mạnh|mua|trung lập|bán|bán mạnh",
+    "short_trend": "tăng|giảm|đi ngang",
+    "mid_trend": "tăng|giảm|đi ngang",
+    "long_trend": "tăng|giảm|đi ngang",
+    "indicators": [
+      {"name":"MA20","value":"<số>","signal":"mua|bán|trung lập","group":"ma"},
+      {"name":"MA50","value":"<số>","signal":"mua|bán|trung lập","group":"ma"},
+      {"name":"MA200","value":"<số>","signal":"mua|bán|trung lập","group":"ma"},
+      {"name":"EMA20","value":"<số>","signal":"mua|bán|trung lập","group":"ma"},
+      {"name":"EMA50","value":"<số>","signal":"mua|bán|trung lập","group":"ma"},
+      {"name":"Hull MA","value":"<số>","signal":"mua|bán|trung lập","group":"ma"},
+      {"name":"RSI(14)","value":"<số>","signal":"mua|bán|trung lập","group":"oscillator"},
+      {"name":"Stochastic","value":"<số>","signal":"mua|bán|trung lập","group":"oscillator"},
+      {"name":"CCI(20)","value":"<số>","signal":"mua|bán|trung lập","group":"oscillator"},
+      {"name":"Williams %R","value":"<số>","signal":"mua|bán|trung lập","group":"oscillator"},
+      {"name":"MFI(14)","value":"<số>","signal":"mua|bán|trung lập","group":"oscillator"},
+      {"name":"Momentum(10)","value":"<số>","signal":"mua|bán|trung lập","group":"oscillator"},
+      {"name":"ROC(12)","value":"<số>","signal":"mua|bán|trung lập","group":"oscillator"},
+      {"name":"MACD","value":"<số>","signal":"mua|bán|trung lập","group":"trend"},
+      {"name":"Bollinger Bands","value":"<mô tả>","signal":"mua|bán|trung lập","group":"trend"},
+      {"name":"ATR(14)","value":"<số>","signal":"trung lập","group":"trend"},
+      {"name":"OBV","value":"<mô tả>","signal":"mua|bán|trung lập","group":"trend"},
+      {"name":"Parabolic SAR","value":"<số>","signal":"mua|bán|trung lập","group":"trend"},
+      {"name":"Ichimoku","value":"<mô tả>","signal":"mua|bán|trung lập","group":"trend"},
+      {"name":"ADX(14)","value":"<số>","signal":"trung lập","group":"trend"},
+      {"name":"Aroon","value":"<mô tả>","signal":"mua|bán|trung lập","group":"trend"},
+      {"name":"VWAP","value":"<số>","signal":"mua|bán|trung lập","group":"trend"},
+      {"name":"Pivot Point","value":"<số>","signal":"trung lập","group":"trend"},
+      {"name":"Donchian Channel","value":"<mô tả>","signal":"mua|bán|trung lập","group":"trend"}
+    ],
+    "support": [<S1>, <S2>],
+    "resistance": [<R1>, <R2>],
+    "summary": "3-4 câu phân tích chuyên sâu bằng tiếng Việt, dựa trên dữ liệu thực"
+  },
+  "silver": {
+    "price": <giá XAG/USD CHÍNH XÁC từ dữ liệu trên, phải > 20>,
+    "change": <số>, "change_pct": <số>,
+    "high_24h": <số>, "low_24h": <số>,
+    "trend": "tăng|giảm|đi ngang",
+    "signal": "mua mạnh|mua|trung lập|bán|bán mạnh",
+    "short_trend": "tăng|giảm|đi ngang",
+    "mid_trend": "tăng|giảm|đi ngang",
+    "long_trend": "tăng|giảm|đi ngang",
+    "indicators": [ ...24 chỉ số tương tự vàng với group tương ứng... ],
+    "support": [<S1>, <S2>], "resistance": [<R1>, <R2>],
+    "summary": "3-4 câu phân tích"
+  },
+  "news": [
+    {"title":"<tiêu đề tin>","impact":"tích cực|tiêu cực|trung lập","detail":"<1-2 câu>"}
+  ],
+  "macro": {
+    "fed_rate": "<lãi suất Fed>",
+    "usd_index": "<DXY>",
+    "president_policy": "<chính sách mới nhất>",
+    "geopolitical": "<địa chính trị>"
+  }
+}
+
+QUAN TRỌNG: 
+- Giá gold.price PHẢI lấy CHÍNH XÁC từ dữ liệu scrape ở trên, KHÔNG được bịa số.
+- Nếu dữ liệu scrape cho thấy giá ~4600-5000, phải dùng đúng số đó.
+- Trả về JSON thuần túy. Tất cả text tiếng Việt. Đủ 24 chỉ số cho cả vàng và bạc.`;
+}
  
  serve(async (req) => {
    if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -102,16 +157,30 @@
      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
      if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
  
-     const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      // Step 1: Scrape real prices from investing.com
+      let goldText = "", silverText = "";
+      try {
+        const scraped = await scrapeRealPrices();
+        goldText = scraped.goldText;
+        silverText = scraped.silverText;
+      } catch (e) {
+        console.error("Firecrawl scrape failed:", e);
+        // Continue with empty text - AI will use its knowledge
+      }
+
+      const PROMPT = buildPrompt(goldText, silverText);
+
+      // Step 2: Send real data to AI for analysis
+      const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
        method: "POST",
        headers: {
          Authorization: `Bearer ${LOVABLE_API_KEY}`,
          "Content-Type": "application/json",
        },
        body: JSON.stringify({
-         model: "google/gemini-2.5-pro",
+          model: "google/gemini-2.5-flash",
          messages: [
-           { role: "system", content: "Bạn là chuyên gia phân tích tài chính vàng bạc. Trả về JSON thuần túy, không markdown, không backticks." },
+            { role: "system", content: "Bạn là chuyên gia phân tích tài chính vàng bạc. Trả về JSON thuần túy, không markdown, không backticks. Sử dụng CHÍNH XÁC giá từ dữ liệu investing.com được cung cấp." },
            { role: "user", content: PROMPT },
          ],
        }),
@@ -139,6 +208,22 @@
        });
      }
  
+      // Step 3: Validate prices
+      const goldPrice = parsed.gold?.price;
+      const silverPrice = parsed.silver?.price;
+      if (typeof goldPrice === 'number' && goldPrice < 3000) {
+        console.error("Gold price validation failed:", goldPrice);
+        return new Response(JSON.stringify({ error: "PRICE_INVALID", detail: `Giá vàng ${goldPrice} < 3000 - không hợp lệ` }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (typeof silverPrice === 'number' && silverPrice < 20) {
+        console.error("Silver price validation failed:", silverPrice);
+        return new Response(JSON.stringify({ error: "PRICE_INVALID", detail: `Giá bạc ${silverPrice} < 20 - không hợp lệ` }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
      // Save to gold_analysis table
      const row = {
        gold_data: parsed.gold || {},
