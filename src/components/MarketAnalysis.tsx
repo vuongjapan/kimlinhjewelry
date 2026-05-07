@@ -3,11 +3,14 @@
    TrendingUp, TrendingDown, Minus, BarChart3,
    AlertTriangle, Loader2, RefreshCw, Newspaper, Globe,
  } from 'lucide-react';
+import { Clock, Calendar } from 'lucide-react';
  import { useAdmin } from '@/hooks/useAdmin';
  import { Skeleton } from '@/components/ui/skeleton';
  
- const API_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-market-analysis`;
- const AUTH = { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`, 'Content-Type': 'application/json' };
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const API_URL = `${SUPABASE_URL}/functions/v1/fetch-market-analysis`;
+const AUTO_URL = `${SUPABASE_URL}/functions/v1/auto-update-gold-analysis`;
+const AUTH = { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`, 'Content-Type': 'application/json' };
  
  type Indicator = { name: string; value: string; signal: string; group?: string };
  type MetalData = {
@@ -188,6 +191,37 @@
    );
  }
  
+function StaleBanner({ createdAt }: { createdAt: string }) {
+  const diffDays = (Date.now() - new Date(createdAt).getTime()) / (1000 * 60 * 60 * 24);
+  if (diffDays <= 4) return null;
+
+  const nextUpdate = (() => {
+    const now = new Date();
+    for (let i = 1; i <= 7; i++) {
+      const d = new Date(now.getTime() + i * 86400000);
+      const dow = d.getDay();
+      if (dow === 1 || dow === 3) return d.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit' });
+    }
+    return '';
+  })();
+
+  const dateStr = new Date(createdAt).toLocaleDateString('vi-VN');
+
+  if (diffDays > 10) {
+    return (
+      <div className="bg-[#D85A30]/10 border border-[#D85A30]/30 rounded-lg px-4 py-3 text-sm text-[#D85A30] mb-4">
+        ⚠️ Dữ liệu có thể không còn chính xác. Vui lòng liên hệ admin.
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-[#BA7517]/10 border border-[#BA7517]/30 rounded-lg px-4 py-3 text-sm text-[#BA7517] mb-4">
+      ⚠️ Dữ liệu từ {dateStr}. Đang chờ cập nhật tự động vào {nextUpdate}.
+    </div>
+  );
+}
+
  const MarketAnalysis = () => {
    const { isAdmin } = useAdmin();
    const [data, setData] = useState<AnalysisRow | null>(null);
@@ -214,7 +248,7 @@
      setGenerating(true);
      setError(null);
      try {
-       const res = await fetch(API_URL, { method: 'POST', headers: AUTH, body: JSON.stringify({ mode: 'generate' }) });
+      const res = await fetch(AUTO_URL, { method: 'POST', headers: AUTH, body: JSON.stringify({ trigger_type: 'manual' }) });
        const json = await res.json();
        if (json.error) {
           if (json.error === 'PRICE_INVALID') {
@@ -226,13 +260,8 @@
            ? 'AI đang quá tải, thử lại sau.'
            : `Lỗi: ${json.error}`);
           }
-       } else if (json.gold_data) {
-          const gp = json.gold_data?.price;
-          if (typeof gp === 'number' && gp < 3000) {
-            setError('⚠️ Dữ liệu không hợp lệ — giá vàng quá thấp, vui lòng thử cập nhật lại');
-            return;
-          }
-         setData(json);
+      } else if (json.success) {
+          await fetchData();
        } else {
          await fetchData();
        }
@@ -262,10 +291,14 @@
              Phân Tích Xu Hướng Vàng & Bạc
            </h2>
            {updatedAt && (
-             <p className="text-muted-foreground font-body text-sm">
+            <p className="text-muted-foreground font-body text-sm mb-1">
                🕐 Cập nhật lúc: <span className="font-semibold text-foreground">{updatedAt}</span>
              </p>
            )}
+          <p className="text-muted-foreground font-body text-xs flex items-center justify-center gap-1">
+            <Calendar className="w-3 h-3" />
+            🔄 Tự động cập nhật: Thứ 2 & Thứ 4 hàng tuần
+          </p>
  
            {isAdmin && (
              <button
@@ -283,6 +316,8 @@
          {loading ? (
            <LoadingSkeleton />
          ) : !data ? (
+          <div className="space-y-4">
+            <StaleBanner createdAt="" />
             <div className="text-center py-16 space-y-4">
               <div className="inline-block bg-[#BA7517]/10 border border-[#BA7517]/30 rounded-xl px-8 py-6">
                 <p className="text-2xl mb-2">📊</p>
@@ -303,8 +338,10 @@
                 <p className="text-xs text-muted-foreground italic">Dữ liệu sẽ được admin cập nhật sớm</p>
               )}
            </div>
+          </div>
          ) : (
            <div className="space-y-6">
+            {data.created_at && <StaleBanner createdAt={data.created_at} />}
              {/* Tab selector */}
              <div className="flex justify-center gap-2">
                <button
