@@ -1,20 +1,34 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
 } from 'recharts';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { useGoldPrices } from '@/hooks/useGoldPrices';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { supabase } from '@/integrations/supabase/client';
 
 /* ── Types ── */
 interface HistoryPoint {
-  ts: number;       // unix ms
-  time: string;     // "HH:mm" or "dd/MM"
+  ts: number;
+  time: string;
   buy: number;
   sell: number;
 }
 
-type TabId = '30P' | '1H' | '1N' | '1T' | '1Th' | '3Th' | '1Y';
+interface DailySummary {
+  date: string;
+  open_buy: number;
+  open_sell: number;
+  close_buy: number;
+  close_sell: number;
+  high_buy: number;
+  low_buy: number;
+  change_buy: number;
+  change_pct: number;
+  point_count: number;
+}
+
+type TabId = '30P' | '1H' | '1N' | '1T' | '1Th' | '3Th' | '6Th' | '1Y';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: '30P', label: '30P' },
@@ -23,40 +37,22 @@ const TABS: { id: TabId; label: string }[] = [
   { id: '1T',  label: '1T' },
   { id: '1Th', label: '1Th' },
   { id: '3Th', label: '3Th' },
+  { id: '6Th', label: '6Th' },
   { id: '1Y',  label: '1N' },
 ];
 
 const BUY_COLOR = '#1D9E75';
 const SELL_COLOR = '#D85A30';
 const ACTIVE_BG = '#BA7517';
-const STORAGE_KEY = 'kl_gold_history';
-const MAX_POINTS = 200;
-const MIN_INTERVAL_MS = 10 * 60 * 1000; // don't save more often than 10 min
 
-/* ── localStorage helpers ── */
-function readHistory(): HistoryPoint[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
-  } catch { return []; }
-}
-
-function writeHistory(points: HistoryPoint[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(points.slice(-MAX_POINTS)));
-  } catch { /* quota exceeded — ignore */ }
-}
-
-function fmtTime(ts: number): string {
-  const d = new Date(ts);
-  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
-
-function fmtDate(ts: number): string {
-  const d = new Date(ts);
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+/* ── Validation ── */
+function isValidPrice(buy: number, sell: number): boolean {
+  if (!buy || !sell) return false;
+  if (buy <= 0 || sell <= 0) return false;
+  if (buy < 5000 || sell < 5000) return false;
+  if (buy > 200000 || sell > 200000) return false;
+  if (sell < buy) return false;
+  return true;
 }
 
 /** Parse VN price string "14.950" → 14950 */
@@ -71,16 +67,34 @@ function fmt(n: number | null | undefined): string {
   return n.toLocaleString('vi-VN');
 }
 
+function fmtTime(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function fmtDate(ts: number): string {
+  const d = new Date(ts);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
 /* ── Component ── */
 const GoldPriceChart = () => {
   const { data: goldData } = useGoldPrices();
   const isMobile = useIsMobile();
   const [tab, setTab] = useState<TabId>('1N');
-  const [history, setHistory] = useState<HistoryPoint[]>(readHistory);
-  const lastSavedRef = useRef<number>(history.length ? history[history.length - 1].ts : 0);
+  const [dbHistory, setDbHistory] = useState<HistoryPoint[]>([]);
+  const [dailySummaries, setDailySummaries] = useState<DailySummary[]>([]);
   const [expanded, setExpanded] = useState(() => {
     try { return localStorage.getItem('kl_history_expanded') === '1'; } catch { return false; }
   });
+  const lastSavedBuyRef = useRef<number>(0);
+  const lastSavedSellRef = useRef<number>(0);
+  const savingRef = useRef(false);
+
+  // Cleanup old localStorage key
+  useEffect(() => {
+    try { localStorage.removeItem('kl_gold_history'); } catch {}
+  }, []);
 
   const toggleExpanded = () => {
     setExpanded(prev => {
@@ -90,98 +104,159 @@ const GoldPriceChart = () => {
     });
   };
 
-  // Extract "Nhẫn Ép Vỉ 9999" (or first valid row) from the same hook powering the price table
+  // Extract ONLY "9999" row
   const current = useMemo(() => {
     if (!goldData?.prices?.length) return null;
-    // Prioritize 9999 / 24k
-    const ranked = [...goldData.prices].sort((a, b) => {
-      const score = (t: string) => {
-        const x = (t || '').toLowerCase();
-        if (x.includes('9999') || x.includes('24k')) return 0;
-        if (x.includes('nhẫn')) return 1;
-        return 2;
-      };
-      return score(a.type) - score(b.type);
-    });
-    for (const p of ranked) {
-      const buy = parsePrice(p.buy);
-      const sell = parsePrice(p.sell);
-      if (buy > 0 && sell > 0) return { buy, sell };
-    }
-    return null;
+    const row9999 = goldData.prices.find(p =>
+      (p.type || '').includes('9999')
+    );
+    if (!row9999) return null;
+    const buy = parsePrice(row9999.buy);
+    const sell = parsePrice(row9999.sell);
+    if (!isValidPrice(buy, sell)) return null;
+    return { buy, sell };
   }, [goldData]);
 
-  // Append to history whenever goldData updates (throttled)
+  // Fetch history from Supabase based on tab
+  const fetchHistory = useCallback(async () => {
+    const useSummary = ['3Th', '6Th', '1Y'].includes(tab);
+    if (useSummary) {
+      const days = tab === '3Th' ? 90 : tab === '6Th' ? 180 : 365;
+      const since = new Date();
+      since.setDate(since.getDate() - days);
+      const { data } = await supabase
+        .from('gold_daily_summary')
+        .select('*')
+        .gte('date', since.toISOString().split('T')[0])
+        .order('date', { ascending: true });
+      setDailySummaries((data as DailySummary[]) || []);
+      setDbHistory([]);
+    } else {
+      const cutoffs: Record<string, number> = {
+        '30P': 30 * 60 * 1000,
+        '1H': 60 * 60 * 1000,
+        '1N': 24 * 60 * 60 * 1000,
+        '1T': 7 * 24 * 60 * 60 * 1000,
+        '1Th': 30 * 24 * 60 * 60 * 1000,
+      };
+      const since = new Date(Date.now() - (cutoffs[tab] || 24 * 60 * 60 * 1000));
+      const { data } = await supabase
+        .from('gold_price_history')
+        .select('*')
+        .gte('date', since.toISOString().split('T')[0])
+        .order('date', { ascending: true })
+        .order('time', { ascending: true });
+      const points: HistoryPoint[] = (data || []).map((r: any) => {
+        const dt = new Date(`${r.date}T${r.time}`);
+        return {
+          ts: dt.getTime(),
+          time: fmtTime(dt.getTime()),
+          buy: Number(r.buy_price),
+          sell: Number(r.sell_price),
+        };
+      }).filter((p: HistoryPoint) => isValidPrice(p.buy, p.sell));
+      setDbHistory(points);
+      setDailySummaries([]);
+    }
+  }, [tab]);
+
+  useEffect(() => { fetchHistory(); }, [fetchHistory]);
+
+  // Save price to Supabase when it changes
   useEffect(() => {
-    if (!current) return;
-    const now = Date.now();
-    if (now - lastSavedRef.current < MIN_INTERVAL_MS) return;
+    if (!current || savingRef.current) return;
+    if (current.buy === lastSavedBuyRef.current && current.sell === lastSavedSellRef.current) return;
 
-    const point: HistoryPoint = {
-      ts: now,
-      time: fmtTime(now),
-      buy: current.buy,
-      sell: current.sell,
-    };
+    savingRef.current = true;
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-gold-price`;
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+      },
+      body: JSON.stringify({ buy_price: current.buy, sell_price: current.sell }),
+    })
+      .then(r => r.json())
+      .then(res => {
+        if (res.status === 'saved') {
+          lastSavedBuyRef.current = current.buy;
+          lastSavedSellRef.current = current.sell;
+          fetchHistory();
+        } else if (res.status === 'skipped') {
+          lastSavedBuyRef.current = current.buy;
+          lastSavedSellRef.current = current.sell;
+        }
+      })
+      .catch(() => {})
+      .finally(() => { savingRef.current = false; });
+  }, [current, fetchHistory]);
 
-    setHistory(prev => {
-      const next = [...prev, point].slice(-MAX_POINTS);
-      writeHistory(next);
-      return next;
-    });
-    lastSavedRef.current = now;
-  }, [current]);
+  const useSummaryView = ['3Th', '6Th', '1Y'].includes(tab);
 
-  // Filter history by selected tab
-  const filtered = useMemo(() => {
-    const now = Date.now();
-    const cutoffs: Record<TabId, number> = {
-      '30P': 30 * 60 * 1000,
-      '1H':  60 * 60 * 1000,
-      '1N':  24 * 60 * 60 * 1000,
-      '1T':  7 * 24 * 60 * 60 * 1000,
-      '1Th': 30 * 24 * 60 * 60 * 1000,
-      '3Th': 90 * 24 * 60 * 60 * 1000,
-      '1Y':  365 * 24 * 60 * 60 * 1000,
-    };
-    const cutoff = now - cutoffs[tab];
-    const pts = history.filter(p => p.ts >= cutoff);
-    // Relabel based on tab
-    const useDate = ['1T', '1Th', '3Th', '1Y'].includes(tab);
-    return pts.map(p => ({ ...p, time: useDate ? fmtDate(p.ts) : fmtTime(p.ts) }));
-  }, [history, tab]);
+  // Chart data for point-based tabs
+  const chartData = useMemo(() => {
+    if (useSummaryView) {
+      return dailySummaries.map(s => ({
+        ts: new Date(s.date).getTime(),
+        time: fmtDate(new Date(s.date).getTime()),
+        buy: s.close_buy,
+        sell: s.close_sell,
+        open_buy: s.open_buy,
+        high_buy: s.high_buy,
+        low_buy: s.low_buy,
+        change_buy: s.change_buy,
+        change_pct: s.change_pct,
+      }));
+    }
+    const pts = [...dbHistory];
+    if (current && pts.length > 0 && pts[pts.length - 1].buy !== current.buy) {
+      pts.push({ ts: Date.now(), time: fmtTime(Date.now()), buy: current.buy, sell: current.sell });
+    }
+    return pts;
+  }, [dbHistory, dailySummaries, current, useSummaryView]);
+
+  // Open/Close badges
+  const todaySummary = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return dailySummaries.find(s => s.date === today) || null;
+  }, [dailySummaries]);
 
   // Stats
   const stats = useMemo(() => {
     const buyNow = current?.buy ?? 0;
     const sellNow = current?.sell ?? 0;
-    const allBuys = filtered.map(p => p.buy).filter(v => v > 0);
-    const first = filtered[0];
+    const allBuys = chartData.map(p => p.buy).filter(v => v > 0);
+    const first = chartData[0];
     const change = first ? buyNow - first.buy : 0;
     const changePct = first && first.buy ? ((change / first.buy) * 100).toFixed(2) : null;
     return {
       buy: buyNow, sell: sellNow, change, changePct,
-      high: allBuys.length ? Math.max(...allBuys, buyNow) : buyNow,
-      low: allBuys.length ? Math.min(...allBuys, buyNow) : buyNow,
+      high: allBuys.length ? Math.max(...allBuys) : buyNow,
+      low: allBuys.length ? Math.min(...allBuys) : buyNow,
     };
-  }, [current, filtered]);
+  }, [current, chartData]);
 
-  // Chart data — include current as last point if not already there
-  const chartData = useMemo(() => {
-    const pts = [...filtered];
-    if (current && (pts.length === 0 || pts[pts.length - 1].buy !== current.buy)) {
-      pts.push({ ts: Date.now(), time: fmtTime(Date.now()), buy: current.buy, sell: current.sell });
-    }
-    return pts;
-  }, [filtered, current]);
-
-  // History table (8 most recent)
+  // History table
   const historyTable = useMemo(() => {
+    if (useSummaryView) {
+      return dailySummaries.slice().reverse().slice(0, 15).map(s => ({
+        time: s.date,
+        buy: s.close_buy,
+        sell: s.close_sell,
+        diff: s.change_buy,
+        open_buy: s.open_buy,
+        high_buy: s.high_buy,
+        low_buy: s.low_buy,
+        change_pct: s.change_pct,
+        point_count: s.point_count,
+      }));
+    }
     return chartData.slice().reverse().slice(0, 15).map((r, i, arr) => {
       const prev = arr[i + 1];
       return { ...r, diff: prev ? r.buy - prev.buy : 0 };
     });
-  }, [chartData]);
+  }, [chartData, dailySummaries, useSummaryView]);
 
   const visibleHistory = expanded ? historyTable : historyTable.slice(0, 5);
   const showChangeCol = historyTable.length >= 2;
@@ -192,6 +267,7 @@ const GoldPriceChart = () => {
   const yMax = allVals.length ? Math.max(...allVals) + 100 : 20000;
 
   const noData = chartData.length < 2;
+  const noValidCurrent = !current;
 
   return (
     <section className="bg-background border-b border-border/50">
@@ -235,9 +311,21 @@ const GoldPriceChart = () => {
             ))}
           </div>
 
+          {/* Open/Close badges */}
+          {todaySummary && (
+            <div className="flex gap-3 px-3 py-1.5 text-xs">
+              <span className="inline-flex items-center gap-1 text-[#1D9E75]">🟢 Mở: {fmt(todaySummary.open_buy)}</span>
+              <span className="inline-flex items-center gap-1 text-[#D85A30]">🔴 Đóng: {fmt(todaySummary.close_buy)}</span>
+            </div>
+          )}
+
           {/* Chart */}
           <div className="px-2 md:px-4 py-3">
-            {noData ? (
+            {noValidCurrent && noData ? (
+              <div className="flex items-center justify-center text-sm text-muted-foreground py-12">
+                ⏸ Đang chờ dữ liệu hợp lệ từ Nhẫn 9999...
+              </div>
+            ) : noData ? (
               <div className="flex items-center justify-center text-sm text-muted-foreground py-12">
                 📊 Đang thu thập dữ liệu… Biểu đồ sẽ hiển thị sau vài lần cập nhật giá.
               </div>
@@ -252,8 +340,8 @@ const GoldPriceChart = () => {
                     formatter={(v: number, name: string) => [fmt(v), name === 'buy' ? 'Giá Mua' : 'Giá Bán']}
                     labelFormatter={(l) => `🕐 ${l}`}
                   />
-                  <Line type="monotone" dataKey="buy" name="buy" stroke={BUY_COLOR} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-                  <Line type="monotone" dataKey="sell" name="sell" stroke={SELL_COLOR} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="buy" name="buy" stroke={BUY_COLOR} strokeWidth={2} dot={false} activeDot={{ r: 4 }} connectNulls={false} />
+                  <Line type="monotone" dataKey="sell" name="sell" stroke={SELL_COLOR} strokeWidth={2} dot={false} activeDot={{ r: 4 }} connectNulls={false} />
                 </LineChart>
               </ResponsiveContainer>
             )}
@@ -263,41 +351,69 @@ const GoldPriceChart = () => {
             </div>
           </div>
 
-          {/* History Table - 8 rows */}
+          {/* History Table */}
           {visibleHistory.length > 0 && (
             <div className="border-t border-border/40 overflow-x-auto">
-              <table className="w-full text-xs md:text-sm">
+              <table className="w-full" style={{ fontSize: 13, borderCollapse: 'collapse' }}>
                 <thead>
                   <tr className="bg-secondary/50 text-foreground">
-                    <th className="text-left px-3 py-2 font-semibold">Thời gian</th>
-                    <th className="text-right px-3 py-2 font-semibold">Giá Mua</th>
-                    <th className="text-right px-3 py-2 font-semibold">Giá Bán</th>
-                    {showChangeCol && <th className="text-right px-3 py-2 font-semibold">Thay đổi</th>}
+                    <th className="text-left px-3 py-2 font-semibold">{useSummaryView ? 'Ngày' : 'Thời gian'}</th>
+                    {useSummaryView ? (
+                      <>
+                        <th className="text-right px-3 py-2 font-semibold">Mở</th>
+                        <th className="text-right px-3 py-2 font-semibold">Đóng</th>
+                        {!isMobile && <th className="text-right px-3 py-2 font-semibold">Cao</th>}
+                        {!isMobile && <th className="text-right px-3 py-2 font-semibold">Thấp</th>}
+                        <th className="text-right px-3 py-2 font-semibold">+/-</th>
+                        {!isMobile && <th className="text-right px-3 py-2 font-semibold">%</th>}
+                      </>
+                    ) : (
+                      <>
+                        <th className="text-right px-3 py-2 font-semibold">Giá Mua</th>
+                        <th className="text-right px-3 py-2 font-semibold">Giá Bán</th>
+                        {showChangeCol && <th className="text-right px-3 py-2 font-semibold">Thay đổi</th>}
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleHistory.map((r, i) => (
-                    <tr key={i} className={`border-t border-border/30 transition-colors ${i === 0 ? 'bg-[#BA7517]/10' : 'hover:bg-secondary/20'}`}>
-                      <td className="px-3 py-2">{r.time}</td>
-                      <td className="px-3 py-2 text-right" style={{ color: BUY_COLOR }}>{fmt(r.buy)}</td>
-                      <td className="px-3 py-2 text-right" style={{ color: SELL_COLOR }}>{fmt(r.sell)}</td>
-                      {showChangeCol && <td className="px-3 py-2 text-right font-medium">
-                        <span className="inline-flex items-center gap-0.5" style={{ color: r.diff > 0 ? BUY_COLOR : r.diff < 0 ? SELL_COLOR : undefined }}>
-                          {r.diff > 0 && <TrendingUp className="w-3 h-3" />}
-                          {r.diff < 0 && <TrendingDown className="w-3 h-3" />}
-                          {r.diff === 0 && <Minus className="w-3 h-3" />}
-                          {r.diff === 0 ? '—' : `${r.diff > 0 ? '+' : ''}${fmt(r.diff)}`}
-                        </span>
-                      </td>}
-                    </tr>
-                  ))}
+                  {visibleHistory.map((r: any, i: number) => {
+                    const rowBg = useSummaryView
+                      ? r.diff > 0 ? 'rgba(29,158,117,0.06)' : r.diff < 0 ? 'rgba(216,90,48,0.06)' : undefined
+                      : i === 0 ? 'rgba(186,117,23,0.1)' : undefined;
+                    return (
+                      <tr key={i} className="border-t border-border/30 transition-colors hover:bg-secondary/20" style={rowBg ? { backgroundColor: rowBg } : undefined}>
+                        <td className="px-3 py-2">{r.time}</td>
+                        {useSummaryView ? (
+                          <>
+                            <td className="px-3 py-2 text-right">{fmt(r.open_buy)}</td>
+                            <td className="px-3 py-2 text-right">{fmt(r.buy)}</td>
+                            {!isMobile && <td className="px-3 py-2 text-right">{fmt(r.high_buy)}</td>}
+                            {!isMobile && <td className="px-3 py-2 text-right">{fmt(r.low_buy)}</td>}
+                            <td className="px-3 py-2 text-right font-medium">
+                              <DiffCell diff={r.diff} />
+                            </td>
+                            {!isMobile && <td className="px-3 py-2 text-right text-muted-foreground">{r.change_pct ? `${r.change_pct > 0 ? '+' : ''}${r.change_pct}%` : '—'}</td>}
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-3 py-2 text-right" style={{ color: BUY_COLOR }}>{fmt(r.buy)}</td>
+                            <td className="px-3 py-2 text-right" style={{ color: SELL_COLOR }}>{fmt(r.sell)}</td>
+                            {showChangeCol && <td className="px-3 py-2 text-right font-medium">
+                              {i === historyTable.length - 1 ? '—' : <DiffCell diff={r.diff} />}
+                            </td>}
+                          </>
+                        )}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               {historyTable.length > 5 && (
                 <div className="flex justify-center py-2">
                   <button
-                    onClick={() => toggleExpanded()}
-                    className="px-4 py-1.5 text-xs font-medium text-white rounded-md transition-colors"
+                    onClick={toggleExpanded}
+                    className="px-4 py-1.5 text-xs font-medium text-white transition-colors"
                     style={{ backgroundColor: '#BA7517', borderRadius: 6 }}
                   >
                     {expanded ? 'Rút gọn ▲' : 'Xem thêm ▼'}
@@ -317,6 +433,18 @@ const GoldPriceChart = () => {
     </section>
   );
 };
+
+function DiffCell({ diff }: { diff: number }) {
+  if (diff === 0) return <span className="inline-flex items-center gap-0.5"><Minus className="w-3 h-3" />—</span>;
+  const color = diff > 0 ? BUY_COLOR : SELL_COLOR;
+  const Icon = diff > 0 ? TrendingUp : TrendingDown;
+  return (
+    <span className="inline-flex items-center gap-0.5" style={{ color }}>
+      <Icon className="w-3 h-3" />
+      {diff > 0 ? '+' : ''}{fmt(diff)}
+    </span>
+  );
+}
 
 function StatCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
