@@ -282,6 +282,8 @@ const AdminDashboard = () => {
                       <td className="px-4 py-2">
                         {log.status === 'success' ? (
                           <span className="text-[#1D9E75] font-medium">✅ Thành công</span>
+                        ) : log.status === 'skipped' ? (
+                          <span className="text-[#888780] font-medium italic cursor-help" title={log.message || ''}>⏭ Bỏ qua</span>
                         ) : (
                           <span className="text-[#D85A30] font-medium cursor-help" title={log.message || ''}>❌ Lỗi</span>
                         )}
@@ -320,7 +322,7 @@ const AdminDashboard = () => {
                           <td className="px-3 py-2 font-mono text-xs">{new Date(log.created_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}</td>
                           <td className="px-3 py-2 text-xs">{log.trigger_type === 'auto' ? '🤖' : '👤'}</td>
                           <td className="px-3 py-2 font-mono text-xs">{log.gold_price ? `$${Number(log.gold_price).toLocaleString()}` : '—'}</td>
-                          <td className="px-3 py-2">{log.status === 'success' ? '✅' : '❌'}</td>
+                          <td className="px-3 py-2">{log.status === 'success' ? '✅' : log.status === 'skipped' ? '⏭' : '❌'}</td>
                           <td className="px-3 py-2 text-xs text-muted-foreground max-w-[200px] truncate">{log.message || ''}</td>
                         </tr>
                       ))}

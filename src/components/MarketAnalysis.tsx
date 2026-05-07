@@ -26,6 +26,7 @@ const AUTH = { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABL
    id: string; created_at: string;
    gold_data: MetalData; silver_data: MetalData;
    news_data: { news: NewsItem[]; macro: MacroData };
+  trigger_type?: string;
  };
  
  const signalColor = (s: string) => {
@@ -248,7 +249,7 @@ function StaleBanner({ createdAt }: { createdAt: string }) {
      setGenerating(true);
      setError(null);
      try {
-      const res = await fetch(AUTO_URL, { method: 'POST', headers: AUTH, body: JSON.stringify({ trigger_type: 'manual' }) });
+     const res = await fetch(AUTO_URL, { method: 'POST', headers: AUTH, body: JSON.stringify({ trigger_type: 'manual', force: true }) });
        const json = await res.json();
        if (json.error) {
           if (json.error === 'PRICE_INVALID') {
@@ -295,6 +296,11 @@ function StaleBanner({ createdAt }: { createdAt: string }) {
                🕐 Cập nhật lúc: <span className="font-semibold text-foreground">{updatedAt}</span>
              </p>
            )}
+          {data?.trigger_type && (
+            <p className="text-xs mb-1" style={{ color: data.trigger_type === 'manual' ? '#BA7517' : '#888780' }}>
+              {data.trigger_type === 'manual' ? '✏️ Cập nhật bởi admin' : '🔄 Tự động cập nhật'}{updatedAt ? ` lúc ${updatedAt}` : ''}
+            </p>
+          )}
           <p className="text-muted-foreground font-body text-xs flex items-center justify-center gap-1">
             <Calendar className="w-3 h-3" />
             🔄 Tự động cập nhật: Thứ 2 & Thứ 4 hàng tuần

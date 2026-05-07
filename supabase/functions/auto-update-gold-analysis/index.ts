@@ -11,7 +11,13 @@ function sb() {
 }
 
 const nowVN = () => new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
-const today = () => new Date().toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", year: "numeric" });
+const todayVN = () => new Date().toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", year: "numeric" });
+
+function todayISO(): string {
+  const now = new Date();
+  const vnDate = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+  return vnDate.toISOString().split("T")[0];
+}
 
 async function scrapeRealPrices(): Promise<{ goldText: string; silverText: string }> {
   const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY");
@@ -36,7 +42,7 @@ async function scrapeRealPrices(): Promise<{ goldText: string; silverText: strin
 }
 
 function buildPrompt(goldText: string, silverText: string): string {
-  const todayStr = today();
+  const todayStr = todayVN();
   return `Hôm nay ${todayStr}. Bạn là chuyên gia phân tích tài chính vàng bạc hàng đầu.
 
 DỮ LIỆU THỰC TẾ VỪA SCRAPE TỪ INVESTING.COM (${todayStr}):
@@ -99,20 +105,34 @@ async function logResult(triggerType: string, status: string, goldPrice: number 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  const triggerType = (() => {
-    try {
-      const body = JSON.parse(req.clone().toString());
-      return body?.trigger_type || "auto";
-    } catch { return "auto"; }
-  })();
-
   let parsedTrigger = "auto";
+  let force = false;
   try {
     const body = await req.json().catch(() => ({}));
     parsedTrigger = body?.trigger_type || "auto";
+    force = body?.force === true;
   } catch {}
 
   try {
+    // If auto (not forced), check if admin already updated today
+    if (!force && parsedTrigger === "auto") {
+      const todayDate = todayISO();
+      const { data: latestManual } = await sb()
+        .from("gold_analysis")
+        .select("created_at, trigger_type")
+        .eq("trigger_type", "manual")
+        .gte("created_at", todayDate + "T00:00:00+07:00")
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (latestManual && latestManual.length > 0) {
+        await logResult("auto", "skipped", null, "Admin đã cập nhật hôm nay lúc " + new Date(latestManual[0].created_at).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" }));
+        return new Response(JSON.stringify({ status: "skipped", reason: "admin_updated_today" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // Step 1: Scrape
     let goldText = "", silverText = "";
     try {
@@ -176,6 +196,7 @@ serve(async (req) => {
       gold_data: parsed.gold || {},
       silver_data: parsed.silver || {},
       news_data: { news: parsed.news || [], macro: parsed.macro || {} },
+      trigger_type: parsedTrigger,
     };
     await sb().from("gold_analysis").insert(row);
 

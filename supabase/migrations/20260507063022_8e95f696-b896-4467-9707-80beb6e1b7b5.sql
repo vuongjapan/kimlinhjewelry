@@ -1,0 +1,1 @@
+ALTER TABLE public.gold_analysis ADD COLUMN IF NOT EXISTS trigger_type text NOT NULL DEFAULT 'auto';
