@@ -282,6 +282,8 @@ const AdminDashboard = () => {
                       <td className="px-4 py-2">
                         {log.status === 'success' ? (
                           <span className="text-[#1D9E75] font-medium">✅ Thành công</span>
+                        ) : log.status === 'skipped' ? (
+                          <span className="text-[#888780] font-medium italic cursor-help" title={log.message || ''}>⏭ Bỏ qua</span>
                         ) : (
                           <span className="text-[#D85A30] font-medium cursor-help" title={log.message || ''}>❌ Lỗi</span>
                         )}
