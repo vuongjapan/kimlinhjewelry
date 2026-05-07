@@ -217,12 +217,21 @@
        const res = await fetch(API_URL, { method: 'POST', headers: AUTH, body: JSON.stringify({ mode: 'generate' }) });
        const json = await res.json();
        if (json.error) {
-         setError(json.error === 'AI_CREDITS_EXHAUSTED'
+          if (json.error === 'PRICE_INVALID') {
+            setError(`⚠️ Dữ liệu không hợp lệ — ${json.detail || 'vui lòng thử cập nhật lại'}`);
+          } else {
+            setError(json.error === 'AI_CREDITS_EXHAUSTED'
            ? 'AI hết credits. Vui lòng nạp thêm.'
            : json.error === 'AI_RATE_LIMITED'
            ? 'AI đang quá tải, thử lại sau.'
            : `Lỗi: ${json.error}`);
+          }
        } else if (json.gold_data) {
+          const gp = json.gold_data?.price;
+          if (typeof gp === 'number' && gp < 3000) {
+            setError('⚠️ Dữ liệu không hợp lệ — giá vàng quá thấp, vui lòng thử cập nhật lại');
+            return;
+          }
          setData(json);
        } else {
          await fetchData();
@@ -274,18 +283,25 @@
          {loading ? (
            <LoadingSkeleton />
          ) : !data ? (
-           <div className="text-center py-16">
-             <p className="text-muted-foreground mb-4">Chưa có dữ liệu phân tích.</p>
+            <div className="text-center py-16 space-y-4">
+              <div className="inline-block bg-[#BA7517]/10 border border-[#BA7517]/30 rounded-xl px-8 py-6">
+                <p className="text-2xl mb-2">📊</p>
+                <p className="font-semibold text-foreground mb-1">Chưa có dữ liệu phân tích</p>
+                <p className="text-sm text-muted-foreground">Nhấn nút Cập nhật để tải thông tin mới nhất ngày hôm nay</p>
+              </div>
              {isAdmin && (
                <button
                  onClick={handleGenerate}
                  disabled={generating}
-                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#BA7517] text-white text-sm font-semibold hover:bg-[#BA7517]/90 disabled:opacity-50"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#BA7517] text-white text-sm font-semibold hover:bg-[#BA7517]/90 disabled:opacity-50 transition-colors"
                >
                  {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                  {generating ? 'Đang phân tích...' : 'Cập nhật lần đầu'}
                </button>
              )}
+              {!isAdmin && (
+                <p className="text-xs text-muted-foreground italic">Dữ liệu sẽ được admin cập nhật sớm</p>
+              )}
            </div>
          ) : (
            <div className="space-y-6">
