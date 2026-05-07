@@ -286,6 +286,13 @@ const AdminDashboard = () => {
                           <span className="text-[#D85A30] font-medium cursor-help" title={log.message || ''}>❌ Lỗi</span>
                         )}
                       </td>
+                        {log.status === 'success' ? (
+                          <span className="text-[#1D9E75] font-medium">✅ Thành công</span>
+                        ) : log.status === 'skipped' ? (
+                          <span className="text-[#888780] font-medium italic cursor-help" title={log.message || ''}>⏭ Bỏ qua</span>
+                        ) : (
+                          <span className="text-[#D85A30] font-medium cursor-help" title={log.message || ''}>❌ Lỗi</span>
+                        )}
                     </tr>
                   ))}
                   {analysisLogs.length === 0 && (
