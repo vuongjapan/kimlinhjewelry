@@ -130,6 +130,33 @@ export type Database = {
         }
         Relationships: []
       }
+      gold_analysis_log: {
+        Row: {
+          created_at: string
+          gold_price: number | null
+          id: string
+          message: string | null
+          status: string
+          trigger_type: string
+        }
+        Insert: {
+          created_at?: string
+          gold_price?: number | null
+          id?: string
+          message?: string | null
+          status?: string
+          trigger_type?: string
+        }
+        Update: {
+          created_at?: string
+          gold_price?: number | null
+          id?: string
+          message?: string | null
+          status?: string
+          trigger_type?: string
+        }
+        Relationships: []
+      }
       gold_daily_summary: {
         Row: {
           change_buy: number
