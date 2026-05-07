@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { LogOut, Plus, Pencil, Trash2, Upload, Users, Package, MapPin, Info, BookOpen, DollarSign, Image } from 'lucide-react';
+import { LogOut, Plus, Pencil, Trash2, Upload, Users, Package, MapPin, Info, BookOpen, DollarSign, Image, BarChart3 } from 'lucide-react';
 import AdminMapEditor from '@/components/AdminMapEditor';
 import AdminAboutEditor from '@/components/AdminAboutEditor';
 import AdminKnowledgeEditor from '@/components/AdminKnowledgeEditor';
@@ -38,10 +38,22 @@ const AdminDashboard = () => {
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [newProduct, setNewProduct] = useState<Omit<Product, 'id'> | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [activeSection, setActiveSection] = useState<'products' | 'customers' | 'map' | 'about' | 'knowledge' | 'prices' | 'hero'>('products');
+  const [activeSection, setActiveSection] = useState<'products' | 'customers' | 'map' | 'about' | 'knowledge' | 'prices' | 'hero' | 'analysis-log'>('products');
   const [customers, setCustomers] = useState<Profile[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [editCustomer, setEditCustomer] = useState<Profile | null>(null);
+  const [analysisLogs, setAnalysisLogs] = useState<any[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [showAllLogs, setShowAllLogs] = useState(false);
+  const [allLogs, setAllLogs] = useState<any[]>([]);
+
+  const fetchAnalysisLogs = async (all = false) => {
+    if (all) setLoadingLogs(true);
+    const query = supabase.from('gold_analysis_log').select('*').order('created_at', { ascending: false });
+    const { data } = all ? await query.limit(100) : await query.limit(5);
+    if (all) { setAllLogs(data || []); setLoadingLogs(false); }
+    else setAnalysisLogs(data || []);
+  };
 
   useEffect(() => {
     if (!authLoading && !isAdmin) navigate('/admin/login');
@@ -56,6 +68,7 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     if (activeSection === 'customers' && isAdmin) fetchCustomers();
+    if (activeSection === 'analysis-log' && isAdmin) fetchAnalysisLogs();
   }, [activeSection, isAdmin]);
 
   if (authLoading || isLoading) {
@@ -155,6 +168,9 @@ const AdminDashboard = () => {
             <Button variant={activeSection === 'map' ? 'default' : 'outline'} size="sm" onClick={() => setActiveSection('map')}>
               <MapPin className="w-4 h-4 mr-1" />Bản đồ
             </Button>
+            <Button variant={activeSection === 'analysis-log' ? 'default' : 'outline'} size="sm" onClick={() => setActiveSection('analysis-log')}>
+              <BarChart3 className="w-4 h-4 mr-1" />Phân tích
+            </Button>
             <Button variant="outline" size="sm" onClick={() => navigate('/')}>Trang chủ</Button>
             <Button variant="ghost" size="sm" onClick={signOut}><LogOut className="w-4 h-4 mr-1" />Đăng xuất</Button>
           </div>
@@ -239,6 +255,80 @@ const AdminDashboard = () => {
                 )}
               </div>
             )}
+          </div>
+        ) : activeSection === 'analysis-log' ? (
+          <div>
+            <h2 className="text-xl font-display font-semibold mb-4">Lịch sử cập nhật tự động</h2>
+            <div className="glass-card overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-secondary/30">
+                    <th className="text-left px-4 py-2 font-medium">Thời gian</th>
+                    <th className="text-left px-4 py-2 font-medium">Loại</th>
+                    <th className="text-left px-4 py-2 font-medium">Giá vàng nhận</th>
+                    <th className="text-left px-4 py-2 font-medium">Trạng thái</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {analysisLogs.map(log => (
+                    <tr key={log.id} className="border-b border-border/50 hover:bg-secondary/20">
+                      <td className="px-4 py-2 font-mono text-xs">{new Date(log.created_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}</td>
+                      <td className="px-4 py-2">
+                        <Badge variant={log.trigger_type === 'auto' ? 'secondary' : 'default'} className="text-[10px]">
+                          {log.trigger_type === 'auto' ? '🤖 Tự động' : '👤 Thủ công'}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-2 font-mono">{log.gold_price ? `$${Number(log.gold_price).toLocaleString()}` : '—'}</td>
+                      <td className="px-4 py-2">
+                        {log.status === 'success' ? (
+                          <span className="text-[#1D9E75] font-medium">✅ Thành công</span>
+                        ) : (
+                          <span className="text-[#D85A30] font-medium cursor-help" title={log.message || ''}>❌ Lỗi</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {analysisLogs.length === 0 && (
+                    <tr><td colSpan={4} className="text-center py-8 text-muted-foreground">Chưa có log nào</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-4 flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => { fetchAnalysisLogs(true); setShowAllLogs(true); }}>
+                Xem tất cả log
+              </Button>
+            </div>
+
+            <Dialog open={showAllLogs} onOpenChange={setShowAllLogs}>
+              <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+                <DialogHeader><DialogTitle>Toàn bộ lịch sử cập nhật phân tích</DialogTitle></DialogHeader>
+                {loadingLogs ? <p className="text-center py-4">Đang tải...</p> : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left px-3 py-2 font-medium">Thời gian</th>
+                        <th className="text-left px-3 py-2 font-medium">Loại</th>
+                        <th className="text-left px-3 py-2 font-medium">Giá vàng</th>
+                        <th className="text-left px-3 py-2 font-medium">Trạng thái</th>
+                        <th className="text-left px-3 py-2 font-medium">Ghi chú</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {allLogs.map(log => (
+                        <tr key={log.id} className="border-b border-border/50">
+                          <td className="px-3 py-2 font-mono text-xs">{new Date(log.created_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}</td>
+                          <td className="px-3 py-2 text-xs">{log.trigger_type === 'auto' ? '🤖' : '👤'}</td>
+                          <td className="px-3 py-2 font-mono text-xs">{log.gold_price ? `$${Number(log.gold_price).toLocaleString()}` : '—'}</td>
+                          <td className="px-3 py-2">{log.status === 'success' ? '✅' : '❌'}</td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground max-w-[200px] truncate">{log.message || ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </DialogContent>
+            </Dialog>
           </div>
         ) : activeSection === 'about' ? (
           <AdminAboutEditor />
