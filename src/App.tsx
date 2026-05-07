@@ -11,6 +11,7 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const AdminLogin = lazy(() => import("./pages/AdminLogin"));
 const AuthPage = lazy(() => import("./pages/AuthPage"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
+const GoldPriceHistory = lazy(() => import("./pages/GoldPriceHistory"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -50,6 +51,11 @@ const App = () => (
           <Route path="/admin" element={
             <Suspense fallback={<PageLoader />}>
               <AdminDashboard />
+            </Suspense>
+          } />
+          <Route path="/lich-su-gia" element={
+            <Suspense fallback={<PageLoader />}>
+              <GoldPriceHistory />
             </Suspense>
           } />
           <Route path="*" element={
