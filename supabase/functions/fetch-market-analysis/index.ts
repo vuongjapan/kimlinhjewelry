@@ -229,6 +229,7 @@ QUAN TRỌNG:
        gold_data: parsed.gold || {},
        silver_data: parsed.silver || {},
        news_data: { news: parsed.news || [], macro: parsed.macro || {} },
+      trigger_type: "manual",
      };
  
      await sb().from("gold_analysis").insert(row);
