@@ -3,6 +3,7 @@ import { Menu, X } from 'lucide-react';
 
 const navLinks = [
   { href: '#gia-vang', label: 'Giá Vàng Bạc tại Kim Linh', highlight: true },
+  { href: '/lich-su-gia', label: '📊 Lịch Sử Giá', highlight: true, isRoute: true },
   { href: '#gia-bac', label: 'Giá bạc TH', highlight: true },
   { href: '#gia-vang-thuong-hieu', label: 'Vàng TH', highlight: true },
   { href: '#gioi-thieu', label: 'Giới thiệu' },
@@ -13,6 +14,13 @@ const navLinks = [
   { href: '#kien-thuc', label: 'Kiến thức' },
   { href: '#lien-he', label: 'Liên hệ' },
 ];
+
+interface NavLinkItem {
+  href: string;
+  label: string;
+  highlight?: boolean;
+  isRoute?: boolean;
+}
 
 const Navbar = () => {
   const [open, setOpen] = useState(false);
@@ -30,6 +38,7 @@ const Navbar = () => {
             <a
               key={l.href}
               href={l.href}
+              {...(l.isRoute ? {} : {})}
               className={`text-sm font-body transition-colors ${
                 l.highlight
                   ? 'text-primary font-semibold hover:text-primary/80'
