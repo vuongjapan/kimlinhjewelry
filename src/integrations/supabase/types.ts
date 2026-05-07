@@ -130,6 +130,84 @@ export type Database = {
         }
         Relationships: []
       }
+      gold_daily_summary: {
+        Row: {
+          change_buy: number
+          change_pct: number
+          close_buy: number
+          close_sell: number
+          date: string
+          high_buy: number
+          low_buy: number
+          open_buy: number
+          open_sell: number
+          point_count: number
+          updated_at: string
+        }
+        Insert: {
+          change_buy?: number
+          change_pct?: number
+          close_buy?: number
+          close_sell?: number
+          date: string
+          high_buy?: number
+          low_buy?: number
+          open_buy?: number
+          open_sell?: number
+          point_count?: number
+          updated_at?: string
+        }
+        Update: {
+          change_buy?: number
+          change_pct?: number
+          close_buy?: number
+          close_sell?: number
+          date?: string
+          high_buy?: number
+          low_buy?: number
+          open_buy?: number
+          open_sell?: number
+          point_count?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      gold_price_history: {
+        Row: {
+          buy_price: number
+          created_at: string
+          date: string
+          id: string
+          is_after_hours: boolean
+          is_close: boolean
+          is_open: boolean
+          sell_price: number
+          time: string
+        }
+        Insert: {
+          buy_price: number
+          created_at?: string
+          date: string
+          id?: string
+          is_after_hours?: boolean
+          is_close?: boolean
+          is_open?: boolean
+          sell_price: number
+          time: string
+        }
+        Update: {
+          buy_price?: number
+          created_at?: string
+          date?: string
+          id?: string
+          is_after_hours?: boolean
+          is_close?: boolean
+          is_open?: boolean
+          sell_price?: number
+          time?: string
+        }
+        Relationships: []
+      }
       knowledge_articles: {
         Row: {
           content: string | null
@@ -394,6 +472,7 @@ export type Database = {
         Args: { p_count: number }
         Returns: Database["public"]["Enums"]["customer_tier"]
       }
+      cleanup_old_gold_data: { Args: never; Returns: undefined }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
