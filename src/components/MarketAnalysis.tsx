@@ -31,7 +31,7 @@ const AUTH = { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABL
  type AnalysisRow = {
    id: string; created_at: string;
    gold_data: MetalData; silver_data: MetalData;
-   news_data: { news: NewsItem[]; macro: MacroData };
+    news_data: { news: NewsItem[]; macro: MacroData; ai_created_at?: string };
   trigger_type?: string;
  };
  
