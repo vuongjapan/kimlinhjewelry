@@ -220,7 +220,7 @@ const AUTH = { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABL
     );
   }
 
-  function AdminDebugInfo({ data, onForce, loading, raw }: { data: AnalysisRow; onForce: () => void; loading: boolean; raw: unknown }) {
+  function AdminDebugInfo({ data, onForce, onLogs, loading, raw, logs }: { data: AnalysisRow; onForce: () => void; onLogs: () => void; loading: boolean; raw: unknown; logs: unknown[] }) {
     const meta = data.gold_data?.source_meta;
     return (
       <div className="rounded-xl border border-dashed border-[#BA7517]/40 bg-[#BA7517]/5 p-4 text-sm">
@@ -239,7 +239,11 @@ const AUTH = { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABL
           <button onClick={onForce} disabled={loading} className="inline-flex items-center gap-2 rounded-full bg-[#BA7517] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
             {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} 🔄 Force Fetch Ngay
           </button>
+          <button onClick={onLogs} className="inline-flex items-center gap-2 rounded-full border border-[#BA7517]/30 px-4 py-2 text-xs font-semibold text-[#BA7517]">
+            📋 Xem Log
+          </button>
         </div>
+        {logs.length > 0 ? <pre className="mt-3 max-h-40 overflow-auto rounded-lg bg-background/80 p-3 text-[11px] text-muted-foreground">{JSON.stringify(logs, null, 2)}</pre> : null}
         {raw ? <pre className="mt-3 max-h-56 overflow-auto rounded-lg bg-background/80 p-3 text-[11px] text-muted-foreground">{JSON.stringify(raw, null, 2)}</pre> : null}
       </div>
     );
