@@ -1,11 +1,12 @@
  import { useEffect, useState } from 'react';
  import {
    TrendingUp, TrendingDown, Minus, BarChart3,
-   AlertTriangle, Loader2, RefreshCw, Newspaper, Globe,
+    AlertTriangle, Loader2, RefreshCw, Newspaper, Globe, ClipboardList,
  } from 'lucide-react';
 import { Clock, Calendar } from 'lucide-react';
  import { useAdmin } from '@/hooks/useAdmin';
  import { Skeleton } from '@/components/ui/skeleton';
+  import { supabase } from '@/integrations/supabase/client';
  
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const API_URL = `${SUPABASE_URL}/functions/v1/fetch-market-analysis`;
@@ -13,12 +14,17 @@ const AUTO_URL = `${SUPABASE_URL}/functions/v1/auto-update-gold-analysis`;
 const AUTH = { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`, 'Content-Type': 'application/json' };
  
  type Indicator = { name: string; value: string; signal: string; group?: string };
+ type SourceMeta = {
+   source?: string; fetched_at?: string; source_timestamp?: string; source_timestamp_vn?: string;
+   raw_price?: number; closes_count?: number; first_close?: number; last_close?: number;
+   data_age_hours?: number; ai_called_at?: string; ai_status?: string;
+ };
  type MetalData = {
    price: number; change: number; change_pct: number;
    high_24h: number; low_24h: number; trend: string; signal: string;
    short_trend?: string; mid_trend?: string; long_trend?: string;
    indicators: Indicator[]; support: number[]; resistance: number[];
-   summary: string;
+    summary: string; source_meta?: SourceMeta;
  };
  type NewsItem = { title: string; impact: string; detail: string };
  type MacroData = { fed_rate: string; usd_index: string; president_policy: string; geopolitical: string };
