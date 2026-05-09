@@ -356,6 +356,7 @@ function StaleBanner({ createdAt }: { createdAt: string }) {
               {data.trigger_type === 'manual' ? '✏️ Cập nhật bởi admin' : '🔄 Tự động cập nhật'}{updatedAt ? ` lúc ${updatedAt}` : ''}
             </p>
           )}
+           {data && <TimestampTransparency data={data} />}
           <p className="text-muted-foreground font-body text-xs flex items-center justify-center gap-1">
             <Calendar className="w-3 h-3" />
             🔄 Tự động cập nhật: Thứ 2 & Thứ 4 hàng tuần
@@ -476,6 +477,8 @@ function StaleBanner({ createdAt }: { createdAt: string }) {
                  </div>
                </div>
              )}
+
+              {isAdmin && <AdminDebugInfo data={data} onForce={handleGenerate} loading={generating} raw={debugRaw} />}
  
              {/* Footer */}
              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground font-body pt-2">
