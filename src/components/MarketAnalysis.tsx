@@ -282,6 +282,7 @@ function StaleBanner({ createdAt }: { createdAt: string }) {
    const [loading, setLoading] = useState(true);
    const [generating, setGenerating] = useState(false);
    const [error, setError] = useState<string | null>(null);
+    const [debugRaw, setDebugRaw] = useState<unknown>(null);
    const [tab, setTab] = useState<'gold' | 'silver'>('gold');
  
    const fetchData = async () => {
@@ -302,8 +303,9 @@ function StaleBanner({ createdAt }: { createdAt: string }) {
      setGenerating(true);
      setError(null);
      try {
-     const res = await fetch(AUTO_URL, { method: 'POST', headers: AUTH, body: JSON.stringify({ trigger_type: 'manual', force: true }) });
+      const res = await fetch(AUTO_URL, { method: 'POST', headers: AUTH, body: JSON.stringify({ mode: 'generate', trigger_type: 'manual', force: true }) });
        const json = await res.json();
+        setDebugRaw(json);
        if (json.error) {
           if (json.error === 'PRICE_INVALID') {
             setError(`⚠️ Dữ liệu không hợp lệ — ${json.detail || 'vui lòng thử cập nhật lại'}`);
