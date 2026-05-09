@@ -287,6 +287,7 @@ function StaleBanner({ createdAt }: { createdAt: string }) {
    const [generating, setGenerating] = useState(false);
    const [error, setError] = useState<string | null>(null);
     const [debugRaw, setDebugRaw] = useState<unknown>(null);
+    const [debugLogs, setDebugLogs] = useState<unknown[]>([]);
    const [tab, setTab] = useState<'gold' | 'silver'>('gold');
  
    const fetchData = async () => {
@@ -331,6 +332,15 @@ function StaleBanner({ createdAt }: { createdAt: string }) {
        setGenerating(false);
      }
    };
+
+    const handleShowLogs = async () => {
+      const { data: logs } = await supabase
+        .from('gold_analysis_log')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10);
+      setDebugLogs(logs || []);
+    };
  
    useEffect(() => { fetchData(); }, []);
  
@@ -482,7 +492,7 @@ function StaleBanner({ createdAt }: { createdAt: string }) {
                </div>
              )}
 
-              {isAdmin && <AdminDebugInfo data={data} onForce={handleGenerate} loading={generating} raw={debugRaw} />}
+              {isAdmin && <AdminDebugInfo data={data} onForce={handleGenerate} onLogs={handleShowLogs} loading={generating} raw={debugRaw} logs={debugLogs} />}
  
              {/* Footer */}
              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground font-body pt-2">
