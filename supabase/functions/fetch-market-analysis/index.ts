@@ -309,7 +309,7 @@ ${investing.silverText.slice(0, 1800)}
 LƯU Ý QUAN TRỌNG:
 - Giá vàng thế giới hiện tại là ~$${market.goldPrice}/oz, lấy từ Yahoo timestamp thực.
 - Đây là năm 2026, không phải 2024 hay 2025.
-- Không được dùng giá cũ như 2455, 3050, 4650 nếu không xuất hiện trong dữ liệu hiện tại.
+- Không được dùng bất kỳ giá cũ nào nếu không xuất hiện trong dữ liệu hiện tại.
 - Chỉ lấy tin từ ${todayStr} hoặc tối đa 3 ngày trước đó; nếu không chắc thì để mảng news rỗng.
 
 Trả về JSON thuần, không markdown:
