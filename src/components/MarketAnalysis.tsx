@@ -197,6 +197,53 @@ const AUTH = { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABL
      </div>
    );
  }
+
+  const fmtDateTimeVN = (value?: string) => value
+    ? new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })
+    : 'Đang cập nhật';
+
+  const fmtUsd = (value?: number) => typeof value === 'number'
+    ? `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : '—';
+
+  function TimestampTransparency({ data }: { data: AnalysisRow }) {
+    const meta = data.gold_data?.source_meta;
+    const priceTime = meta?.source_timestamp;
+    const aiTime = meta?.ai_called_at || data.news_data?.ai_created_at || data.created_at;
+    const warn = priceTime && aiTime && Math.abs(new Date(aiTime).getTime() - new Date(priceTime).getTime()) > 5 * 86400000;
+    return (
+      <div className="mx-auto max-w-2xl rounded-xl border border-border bg-card/70 px-4 py-3 text-left text-xs text-muted-foreground space-y-1">
+        <p>📡 Giá lấy từ Yahoo Finance lúc: <span className="font-semibold text-foreground">{fmtDateTimeVN(priceTime)}</span></p>
+        <p>🤖 Phân tích AI viết lúc: <span className="font-semibold text-foreground">{fmtDateTimeVN(aiTime)}</span></p>
+        {warn && <p className="mt-2 rounded-lg border border-[#BA7517]/30 bg-[#BA7517]/10 px-3 py-2 text-[#BA7517]">⚠️ Phần phân tích text có thể chưa cập nhật theo giá mới nhất</p>}
+      </div>
+    );
+  }
+
+  function AdminDebugInfo({ data, onForce, loading, raw }: { data: AnalysisRow; onForce: () => void; loading: boolean; raw: unknown }) {
+    const meta = data.gold_data?.source_meta;
+    return (
+      <div className="rounded-xl border border-dashed border-[#BA7517]/40 bg-[#BA7517]/5 p-4 text-sm">
+        <div className="mb-3 flex items-center gap-2 font-semibold text-[#BA7517]"><ClipboardList className="h-4 w-4" /> 🔧 Debug Info (chỉ admin)</div>
+        <div className="grid gap-1 text-xs text-foreground sm:grid-cols-2">
+          <span>Yahoo timestamp: <b>{fmtDateTimeVN(meta?.source_timestamp)}</b></span>
+          <span>Giá raw từ API: <b>{fmtUsd(meta?.raw_price)}</b></span>
+          <span>Closes array: <b>{meta?.closes_count ?? '—'} điểm</b></span>
+          <span>Điểm cuối mảng: <b>{fmtUsd(meta?.last_close)}</b></span>
+          <span>Lưu backend lúc: <b>{fmtDateTimeVN(data.created_at)}</b></span>
+          <span>Claude gọi lúc: <b>{fmtDateTimeVN(meta?.ai_called_at)}</b></span>
+          <span>AI status: <b>{meta?.ai_status || '—'}</b></span>
+          <span>Tuổi dữ liệu: <b>{typeof meta?.data_age_hours === 'number' ? `${meta.data_age_hours.toFixed(1)} giờ` : '—'}</b></span>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button onClick={onForce} disabled={loading} className="inline-flex items-center gap-2 rounded-full bg-[#BA7517] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} 🔄 Force Fetch Ngay
+          </button>
+        </div>
+        {raw ? <pre className="mt-3 max-h-56 overflow-auto rounded-lg bg-background/80 p-3 text-[11px] text-muted-foreground">{JSON.stringify(raw, null, 2)}</pre> : null}
+      </div>
+    );
+  }
  
 function StaleBanner({ createdAt }: { createdAt: string }) {
   const diffDays = (Date.now() - new Date(createdAt).getTime()) / (1000 * 60 * 60 * 24);
