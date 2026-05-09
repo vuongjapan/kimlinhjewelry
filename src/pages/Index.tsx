@@ -1,4 +1,5 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import Navbar from '@/components/Navbar';
 import HeroSection from '@/components/HeroSection';
 import DomesticGoldPriceCard from '@/components/DomesticGoldPriceCard';
@@ -25,6 +26,23 @@ const SectionFallback = () => (
 );
 
 const Index = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!location.hash) return;
+    const id = location.hash.slice(1);
+    let tries = 0;
+    const tryScroll = () => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+      if (tries++ < 20) setTimeout(tryScroll, 200);
+    };
+    tryScroll();
+  }, [location]);
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
