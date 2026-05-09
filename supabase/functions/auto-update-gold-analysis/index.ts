@@ -34,6 +34,12 @@ const money = (n: number, digits = 2) => n.toLocaleString("en-US", { minimumFrac
 const round = (n: number, digits = 2) => Number(n.toFixed(digits));
 const nowVN = () => new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 
+function todayISO(): string {
+  const now = new Date();
+  const vnDate = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+  return vnDate.toISOString().split("T")[0];
+}
+
 function todayVNLong(): string {
   const today = new Date();
   today.setHours(today.getHours() + 7);
@@ -377,11 +383,28 @@ serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({ mode: "read" }));
-    const mode = body?.mode || "read";
+    const mode = body?.mode || "generate";
+    const triggerType = body?.trigger_type || "auto";
+    const force = body?.force === true;
 
     if (mode !== "generate") {
       const { data } = await sb().from("gold_analysis").select("*").order("created_at", { ascending: false }).limit(1).maybeSingle();
       return new Response(JSON.stringify(data || null), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    if (!force && triggerType === "auto") {
+      const { data: latestManual } = await sb()
+        .from("gold_analysis")
+        .select("created_at")
+        .eq("trigger_type", "manual")
+        .gte("created_at", todayISO() + "T00:00:00+07:00")
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (latestManual?.length) {
+        const message = "Admin đã cập nhật hôm nay lúc " + new Date(latestManual[0].created_at).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+        await logResult("auto", "skipped", null, message);
+        return new Response(JSON.stringify({ status: "skipped", reason: "admin_updated_today", message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
     }
 
     const market = await fetchYahooMarketData();
@@ -390,7 +413,7 @@ serve(async (req) => {
       gold_data: analysis.gold,
       silver_data: analysis.silver,
       news_data: { news: analysis.news, macro: analysis.macro, ai_created_at: analysis.gold.source_meta?.ai_called_at },
-      trigger_type: body?.trigger_type || "manual",
+      trigger_type: triggerType,
     };
 
     const { data: inserted, error: insertError } = await sb().from("gold_analysis").insert(row).select("*").single();
