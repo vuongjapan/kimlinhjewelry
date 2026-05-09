@@ -347,6 +347,14 @@ function DayDetailModal({ date, onClose }: { date: string; onClose: () => void }
     sell: Number(p.sell_price),
   }));
 
+  const open = points[0];
+  const close = points[points.length - 1];
+  const dayChange = open && close ? Number(close.buy_price) - Number(open.buy_price) : 0;
+  const dayChangePct = open && Number(open.buy_price) > 0 ? (dayChange / Number(open.buy_price)) * 100 : 0;
+
+  // Newest first for table
+  const tableRows = [...points].reverse();
+
   return (
     <Dialog open onOpenChange={() => onClose()}>
       <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
@@ -371,39 +379,60 @@ function DayDetailModal({ date, onClose }: { date: string; onClose: () => void }
             <table className="w-full mt-2" style={{ fontSize: 13 }}>
               <thead>
                 <tr className="bg-secondary/50">
-                  <th className="text-left px-2 py-1.5">Giờ</th>
+                  <th className="text-left px-2 py-1.5">Thời gian</th>
                   <th className="text-right px-2 py-1.5">Mua</th>
                   <th className="text-right px-2 py-1.5">Bán</th>
                   <th className="text-right px-2 py-1.5">Thay đổi</th>
-                  <th className="text-center px-2 py-1.5"></th>
                 </tr>
               </thead>
               <tbody>
-                {points.map((p, i) => {
-                  const prev = points[i - 1];
+                {tableRows.map((p) => {
+                  const idx = points.indexOf(p);
+                  const prev = points[idx - 1];
                   const diff = prev ? Number(p.buy_price) - Number(prev.buy_price) : 0;
                   return (
                     <tr key={p.id} className="border-t border-border/30"
                       style={{ opacity: p.is_after_hours ? 0.5 : 1 }}>
-                      <td className="px-2 py-1.5">{p.time.slice(0, 5)}</td>
+                      <td className="px-2 py-1.5">
+                        <span className="font-medium">{p.time.slice(0, 5)}</span>
+                        {p.is_open && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ backgroundColor: 'rgba(29,158,117,0.18)', color: '#0f7a5a' }}>MỞ</span>}
+                        {p.is_close && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ backgroundColor: 'rgba(216,90,48,0.18)', color: '#b04420' }}>ĐÓNG</span>}
+                      </td>
                       <td className="px-2 py-1.5 text-right" style={{ color: BUY_COLOR }}>{fmt(Number(p.buy_price))}</td>
                       <td className="px-2 py-1.5 text-right" style={{ color: SELL_COLOR }}>{fmt(Number(p.sell_price))}</td>
                       <td className="px-2 py-1.5 text-right">
-                        {i === 0 ? '—' : (
+                        {!prev ? '—' : (
                           <span style={{ color: diff > 0 ? BUY_COLOR : diff < 0 ? SELL_COLOR : undefined }}>
-                            {diff > 0 ? '+' : ''}{fmt(diff)}
+                            {diff > 0 ? '↑ +' : diff < 0 ? '↓ ' : ''}{fmt(diff)}
                           </span>
                         )}
-                      </td>
-                      <td className="px-2 py-1.5 text-center text-xs">
-                        {p.is_open && <span className="text-[#1D9E75]">Mở cửa</span>}
-                        {p.is_close && <span className="text-[#D85A30]">Đóng cửa</span>}
                       </td>
                     </tr>
                   );
                 })}
+                {tableRows.length === 0 && (
+                  <tr><td colSpan={4} className="px-2 py-6 text-center text-muted-foreground">Chưa có dữ liệu trong ngày này</td></tr>
+                )}
               </tbody>
             </table>
+
+            {open && close && (
+              <div className="mt-3 p-3 rounded-md bg-secondary/40 text-xs space-y-0.5">
+                <p>
+                  <span className="text-muted-foreground">Mở:</span>{' '}
+                  <span className="font-medium">{fmt(Number(open.buy_price))} / {fmt(Number(open.sell_price))}</span>
+                  {' → '}
+                  <span className="text-muted-foreground">Đóng:</span>{' '}
+                  <span className="font-medium">{fmt(Number(close.buy_price))} / {fmt(Number(close.sell_price))}</span>
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Thay đổi ngày:</span>{' '}
+                  <span className="font-semibold" style={{ color: dayChange > 0 ? BUY_COLOR : dayChange < 0 ? SELL_COLOR : undefined }}>
+                    {dayChange > 0 ? '+' : ''}{fmt(dayChange)} ({dayChangePct > 0 ? '+' : ''}{dayChangePct.toFixed(2)}%)
+                  </span>
+                </p>
+              </div>
+            )}
           </>
         )}
       </DialogContent>
