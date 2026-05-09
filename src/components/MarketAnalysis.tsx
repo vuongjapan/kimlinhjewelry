@@ -1,11 +1,12 @@
  import { useEffect, useState } from 'react';
  import {
    TrendingUp, TrendingDown, Minus, BarChart3,
-   AlertTriangle, Loader2, RefreshCw, Newspaper, Globe,
+    AlertTriangle, Loader2, RefreshCw, Newspaper, Globe, ClipboardList,
  } from 'lucide-react';
 import { Clock, Calendar } from 'lucide-react';
  import { useAdmin } from '@/hooks/useAdmin';
  import { Skeleton } from '@/components/ui/skeleton';
+  import { supabase } from '@/integrations/supabase/client';
  
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const API_URL = `${SUPABASE_URL}/functions/v1/fetch-market-analysis`;
@@ -13,19 +14,24 @@ const AUTO_URL = `${SUPABASE_URL}/functions/v1/auto-update-gold-analysis`;
 const AUTH = { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`, 'Content-Type': 'application/json' };
  
  type Indicator = { name: string; value: string; signal: string; group?: string };
+ type SourceMeta = {
+   source?: string; fetched_at?: string; source_timestamp?: string; source_timestamp_vn?: string;
+   raw_price?: number; closes_count?: number; first_close?: number; last_close?: number;
+   data_age_hours?: number; ai_called_at?: string; ai_status?: string;
+ };
  type MetalData = {
    price: number; change: number; change_pct: number;
    high_24h: number; low_24h: number; trend: string; signal: string;
    short_trend?: string; mid_trend?: string; long_trend?: string;
    indicators: Indicator[]; support: number[]; resistance: number[];
-   summary: string;
+    summary: string; source_meta?: SourceMeta;
  };
  type NewsItem = { title: string; impact: string; detail: string };
  type MacroData = { fed_rate: string; usd_index: string; president_policy: string; geopolitical: string };
  type AnalysisRow = {
    id: string; created_at: string;
    gold_data: MetalData; silver_data: MetalData;
-   news_data: { news: NewsItem[]; macro: MacroData };
+    news_data: { news: NewsItem[]; macro: MacroData; ai_created_at?: string };
   trigger_type?: string;
  };
  
@@ -191,6 +197,57 @@ const AUTH = { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABL
      </div>
    );
  }
+
+  const fmtDateTimeVN = (value?: string) => value
+    ? new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })
+    : 'Đang cập nhật';
+
+  const fmtUsd = (value?: number) => typeof value === 'number'
+    ? `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : '—';
+
+  function TimestampTransparency({ data }: { data: AnalysisRow }) {
+    const meta = data.gold_data?.source_meta;
+    const priceTime = meta?.source_timestamp;
+    const aiTime = meta?.ai_called_at || data.news_data?.ai_created_at || data.created_at;
+    const warn = priceTime && aiTime && Math.abs(new Date(aiTime).getTime() - new Date(priceTime).getTime()) > 5 * 86400000;
+    return (
+      <div className="mx-auto max-w-2xl rounded-xl border border-border bg-card/70 px-4 py-3 text-left text-xs text-muted-foreground space-y-1">
+        <p>📡 Giá lấy từ Yahoo Finance lúc: <span className="font-semibold text-foreground">{fmtDateTimeVN(priceTime)}</span></p>
+        <p>🤖 Phân tích AI viết lúc: <span className="font-semibold text-foreground">{fmtDateTimeVN(aiTime)}</span></p>
+        {warn && <p className="mt-2 rounded-lg border border-[#BA7517]/30 bg-[#BA7517]/10 px-3 py-2 text-[#BA7517]">⚠️ Phần phân tích text có thể chưa cập nhật theo giá mới nhất</p>}
+      </div>
+    );
+  }
+
+  function AdminDebugInfo({ data, onForce, onLogs, loading, raw, logs }: { data: AnalysisRow; onForce: () => void; onLogs: () => void; loading: boolean; raw: unknown; logs: unknown[] }) {
+    const meta = data.gold_data?.source_meta;
+    return (
+      <div className="rounded-xl border border-dashed border-[#BA7517]/40 bg-[#BA7517]/5 p-4 text-sm">
+        <div className="mb-3 flex items-center gap-2 font-semibold text-[#BA7517]"><ClipboardList className="h-4 w-4" /> 🔧 Debug Info (chỉ admin)</div>
+        <div className="grid gap-1 text-xs text-foreground sm:grid-cols-2">
+          <span>Yahoo timestamp: <b>{fmtDateTimeVN(meta?.source_timestamp)}</b></span>
+          <span>Giá raw từ API: <b>{fmtUsd(meta?.raw_price)}</b></span>
+          <span>Closes array: <b>{meta?.closes_count ?? '—'} điểm</b></span>
+          <span>Điểm cuối mảng: <b>{fmtUsd(meta?.last_close)}</b></span>
+          <span>Lưu backend lúc: <b>{fmtDateTimeVN(data.created_at)}</b></span>
+          <span>Claude gọi lúc: <b>{fmtDateTimeVN(meta?.ai_called_at)}</b></span>
+          <span>AI status: <b>{meta?.ai_status || '—'}</b></span>
+          <span>Tuổi dữ liệu: <b>{typeof meta?.data_age_hours === 'number' ? `${meta.data_age_hours.toFixed(1)} giờ` : '—'}</b></span>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button onClick={onForce} disabled={loading} className="inline-flex items-center gap-2 rounded-full bg-[#BA7517] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} 🔄 Force Fetch Ngay
+          </button>
+          <button onClick={onLogs} className="inline-flex items-center gap-2 rounded-full border border-[#BA7517]/30 px-4 py-2 text-xs font-semibold text-[#BA7517]">
+            📋 Xem Log
+          </button>
+        </div>
+        {logs.length > 0 ? <pre className="mt-3 max-h-40 overflow-auto rounded-lg bg-background/80 p-3 text-[11px] text-muted-foreground">{JSON.stringify(logs, null, 2)}</pre> : null}
+        {raw ? <pre className="mt-3 max-h-56 overflow-auto rounded-lg bg-background/80 p-3 text-[11px] text-muted-foreground">{JSON.stringify(raw, null, 2)}</pre> : null}
+      </div>
+    );
+  }
  
 function StaleBanner({ createdAt }: { createdAt: string }) {
   const diffDays = (Date.now() - new Date(createdAt).getTime()) / (1000 * 60 * 60 * 24);
@@ -229,6 +286,8 @@ function StaleBanner({ createdAt }: { createdAt: string }) {
    const [loading, setLoading] = useState(true);
    const [generating, setGenerating] = useState(false);
    const [error, setError] = useState<string | null>(null);
+    const [debugRaw, setDebugRaw] = useState<unknown>(null);
+    const [debugLogs, setDebugLogs] = useState<unknown[]>([]);
    const [tab, setTab] = useState<'gold' | 'silver'>('gold');
  
    const fetchData = async () => {
@@ -249,8 +308,9 @@ function StaleBanner({ createdAt }: { createdAt: string }) {
      setGenerating(true);
      setError(null);
      try {
-     const res = await fetch(AUTO_URL, { method: 'POST', headers: AUTH, body: JSON.stringify({ trigger_type: 'manual', force: true }) });
+      const res = await fetch(AUTO_URL, { method: 'POST', headers: AUTH, body: JSON.stringify({ mode: 'generate', trigger_type: 'manual', force: true }) });
        const json = await res.json();
+        setDebugRaw(json);
        if (json.error) {
           if (json.error === 'PRICE_INVALID') {
             setError(`⚠️ Dữ liệu không hợp lệ — ${json.detail || 'vui lòng thử cập nhật lại'}`);
@@ -272,6 +332,15 @@ function StaleBanner({ createdAt }: { createdAt: string }) {
        setGenerating(false);
      }
    };
+
+    const handleShowLogs = async () => {
+      const { data: logs } = await supabase
+        .from('gold_analysis_log')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10);
+      setDebugLogs(logs || []);
+    };
  
    useEffect(() => { fetchData(); }, []);
  
@@ -301,6 +370,7 @@ function StaleBanner({ createdAt }: { createdAt: string }) {
               {data.trigger_type === 'manual' ? '✏️ Cập nhật bởi admin' : '🔄 Tự động cập nhật'}{updatedAt ? ` lúc ${updatedAt}` : ''}
             </p>
           )}
+           {data && <TimestampTransparency data={data} />}
           <p className="text-muted-foreground font-body text-xs flex items-center justify-center gap-1">
             <Calendar className="w-3 h-3" />
             🔄 Tự động cập nhật: Thứ 2 & Thứ 4 hàng tuần
@@ -421,6 +491,8 @@ function StaleBanner({ createdAt }: { createdAt: string }) {
                  </div>
                </div>
              )}
+
+              {isAdmin && <AdminDebugInfo data={data} onForce={handleGenerate} onLogs={handleShowLogs} loading={generating} raw={debugRaw} logs={debugLogs} />}
  
              {/* Footer */}
              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground font-body pt-2">
