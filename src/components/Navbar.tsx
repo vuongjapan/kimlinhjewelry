@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Menu, X } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 const navLinks = [
   { href: '#gia-vang', label: 'Giá Vàng Bạc tại Kim Linh', highlight: true },
@@ -24,30 +25,57 @@ interface NavLinkItem {
 
 const Navbar = () => {
   const [open, setOpen] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isHome = location.pathname === '/';
+
+  const handleClick = (l: NavLinkItem) => (e: React.MouseEvent) => {
+    setOpen(false);
+    if (l.isRoute) return; // let <Link> handle it
+    if (l.href.startsWith('#')) {
+      if (!isHome) {
+        e.preventDefault();
+        navigate('/' + l.href);
+      }
+      // on home, default anchor jump works
+    }
+  };
+
+  const renderLink = (l: NavLinkItem, className: string) => {
+    if (l.isRoute) {
+      return (
+        <Link key={l.href} to={l.href} onClick={() => setOpen(false)} className={className}>
+          {l.label}
+        </Link>
+      );
+    }
+    const target = isHome ? l.href : '/' + l.href;
+    return (
+      <a key={l.href} href={target} onClick={handleClick(l)} className={className}>
+        {l.label}
+      </a>
+    );
+  };
 
   return (
     <nav className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border/50">
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-        <a href="#" className="font-display font-semibold text-lg text-foreground">
+        <Link to="/" className="font-display font-semibold text-lg text-foreground">
           Kim Linh Jewelry
-        </a>
+        </Link>
 
         {/* Desktop */}
         <div className="hidden lg:flex items-center gap-5 flex-wrap">
-          {navLinks.map((l) => (
-            <a
-              key={l.href}
-              href={l.href}
-              {...(l.isRoute ? {} : {})}
-              className={`text-sm font-body transition-colors ${
+          {navLinks.map((l) =>
+            renderLink(
+              l,
+              `text-sm font-body transition-colors ${
                 l.highlight
                   ? 'text-primary font-semibold hover:text-primary/80'
                   : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {l.label}
-            </a>
-          ))}
+              }`
+            )
+          )}
         </div>
 
         {/* Mobile hamburger */}
@@ -64,20 +92,16 @@ const Navbar = () => {
       {open && (
         <div className="lg:hidden border-t border-border/50 bg-background/95 backdrop-blur-md">
           <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col gap-3">
-            {navLinks.map((l) => (
-              <a
-                key={l.href}
-                href={l.href}
-                onClick={() => setOpen(false)}
-                className={`text-sm font-body py-1 transition-colors ${
+            {navLinks.map((l) =>
+              renderLink(
+                l,
+                `text-sm font-body py-1 transition-colors ${
                   l.highlight
                     ? 'text-primary font-semibold'
                     : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {l.label}
-              </a>
-            ))}
+                }`
+              )
+            )}
           </div>
         </div>
       )}

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
 } from 'recharts';
-import { TrendingUp, TrendingDown, Minus, Search, Download, Trash2, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Download, Trash2, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdmin } from '@/hooks/useAdmin';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -128,22 +128,35 @@ function LookupTab({ isMobile }: { isMobile: boolean }) {
     const allHigh = data.map(d => d.high_buy);
     const allLow = data.map(d => d.low_buy).filter(v => v > 0);
     const change = last.close_buy - first.open_buy;
+    const changePct = first.open_buy > 0 ? (change / first.open_buy) * 100 : 0;
     return {
-      startPrice: first.open_buy,
-      endPrice: last.close_buy,
+      startBuy: first.open_buy,
+      startSell: first.open_sell,
+      endBuy: last.close_buy,
+      endSell: last.close_sell,
       high: Math.max(...allHigh),
       low: allLow.length ? Math.min(...allLow) : 0,
       change,
+      changePct: Math.round(changePct * 100) / 100,
       totalDays: data.length,
     };
   }, [data]);
 
-  // Chart data (ascending for chart)
+  // Chart data (ascending for chart) — 4 lines
   const chartData = useMemo(() =>
     [...data].reverse().map(d => ({
       date: fmtDate(d.date),
-      close: d.close_buy,
+      close_buy: d.close_buy,
+      close_sell: d.close_sell,
+      open_buy: d.open_buy,
+      open_sell: d.open_sell,
     })), [data]);
+
+  const yDomain = useMemo<[number, number]>(() => {
+    const vals = chartData.flatMap(d => [d.close_buy, d.close_sell, d.open_buy, d.open_sell]).filter(v => v > 0);
+    if (!vals.length) return [0, 1];
+    return [Math.min(...vals) - 200, Math.max(...vals) + 200];
+  }, [chartData]);
 
   return (
     <div>
@@ -194,11 +207,28 @@ function LookupTab({ isMobile }: { isMobile: boolean }) {
                 <LineChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.4} />
                   <XAxis dataKey="date" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-                  <YAxis tick={{ fontSize: 10 }} tickFormatter={fmt} width={55} />
-                  <Tooltip formatter={(v: number) => [fmt(v), 'Giá đóng cửa']} />
-                  <Line type="monotone" dataKey="close" stroke={GOLD_COLOR} strokeWidth={2} dot={false} />
+                  <YAxis tick={{ fontSize: 10 }} tickFormatter={fmt} width={55} domain={yDomain} />
+                  <Tooltip
+                    formatter={(v: number, name: string) => {
+                      const map: Record<string, string> = {
+                        close_buy: 'Mua đóng', close_sell: 'Bán đóng',
+                        open_buy: 'Mua mở', open_sell: 'Bán mở',
+                      };
+                      return [fmt(v), map[name] || name];
+                    }}
+                  />
+                  <Line type="monotone" dataKey="close_buy" stroke={BUY_COLOR} strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="close_sell" stroke={SELL_COLOR} strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="open_buy" stroke={BUY_COLOR} strokeWidth={1.5} strokeDasharray="4 3" dot={false} strokeOpacity={0.6} />
+                  <Line type="monotone" dataKey="open_sell" stroke={SELL_COLOR} strokeWidth={1.5} strokeDasharray="4 3" dot={false} strokeOpacity={0.6} />
                 </LineChart>
               </ResponsiveContainer>
+              <div className="flex flex-wrap justify-center gap-3 mt-1 text-[11px] text-muted-foreground">
+                <span className="flex items-center gap-1"><span className="w-4 h-0.5" style={{ background: BUY_COLOR }} /> Mua đóng</span>
+                <span className="flex items-center gap-1"><span className="w-4 h-0.5" style={{ background: SELL_COLOR }} /> Bán đóng</span>
+                <span className="flex items-center gap-1"><span className="w-4 border-t border-dashed" style={{ borderColor: BUY_COLOR }} /> Mua mở</span>
+                <span className="flex items-center gap-1"><span className="w-4 border-t border-dashed" style={{ borderColor: SELL_COLOR }} /> Bán mở</span>
+              </div>
             </div>
           )}
 
@@ -209,12 +239,11 @@ function LookupTab({ isMobile }: { isMobile: boolean }) {
                 <thead>
                   <tr className="bg-secondary/50">
                     <th className="text-left px-3 py-2 font-semibold">Ngày</th>
-                    {!isMobile && <th className="text-right px-3 py-2 font-semibold">Mở cửa</th>}
-                    <th className="text-right px-3 py-2 font-semibold">Đóng cửa</th>
-                    {!isMobile && <th className="text-right px-3 py-2 font-semibold">Cao</th>}
-                    {!isMobile && <th className="text-right px-3 py-2 font-semibold">Thấp</th>}
+                    <th className="text-right px-3 py-2 font-semibold">Mở cửa<br/><span className="text-[10px] font-normal text-muted-foreground">Mua / Bán</span></th>
+                    <th className="text-right px-3 py-2 font-semibold">Đóng cửa<br/><span className="text-[10px] font-normal text-muted-foreground">Mua / Bán</span></th>
+                    {!isMobile && <th className="text-right px-3 py-2 font-semibold">Cao<br/><span className="text-[10px] font-normal text-muted-foreground">(mua)</span></th>}
+                    {!isMobile && <th className="text-right px-3 py-2 font-semibold">Thấp<br/><span className="text-[10px] font-normal text-muted-foreground">(mua)</span></th>}
                     <th className="text-right px-3 py-2 font-semibold">+/-</th>
-                    {!isMobile && <th className="text-right px-3 py-2 font-semibold">%</th>}
                     {!isMobile && <th className="text-right px-3 py-2 font-semibold">Điểm</th>}
                   </tr>
                 </thead>
@@ -223,10 +252,10 @@ function LookupTab({ isMobile }: { isMobile: boolean }) {
                     <tr key={r.date}
                       onClick={() => setDetailDate(r.date)}
                       className="border-t border-border/30 cursor-pointer hover:bg-secondary/20 transition-colors"
-                      style={{ backgroundColor: r.change_buy > 0 ? 'rgba(29,158,117,0.04)' : r.change_buy < 0 ? 'rgba(216,90,48,0.04)' : undefined }}>
+                      style={{ backgroundColor: r.close_buy > r.open_buy ? 'rgba(29,158,117,0.05)' : r.close_buy < r.open_buy ? 'rgba(216,90,48,0.05)' : undefined }}>
                       <td className="px-3 py-2">{fmtDate(r.date)}</td>
-                      {!isMobile && <td className="px-3 py-2 text-right">{fmt(r.open_buy)}</td>}
-                      <td className="px-3 py-2 text-right font-medium">{fmt(r.close_buy)}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{fmt(r.open_buy)} / {fmt(r.open_sell)}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap font-medium">{fmt(r.close_buy)} / {fmt(r.close_sell)}</td>
                       {!isMobile && <td className="px-3 py-2 text-right">{fmt(r.high_buy)}</td>}
                       {!isMobile && <td className="px-3 py-2 text-right">{fmt(r.low_buy)}</td>}
                       <td className="px-3 py-2 text-right">
@@ -234,7 +263,6 @@ function LookupTab({ isMobile }: { isMobile: boolean }) {
                           {r.change_buy === 0 ? '—' : `${r.change_buy > 0 ? '+' : ''}${fmt(r.change_buy)}`}
                         </span>
                       </td>
-                      {!isMobile && <td className="px-3 py-2 text-right text-muted-foreground">{r.change_pct ? `${r.change_pct > 0 ? '+' : ''}${r.change_pct}%` : '—'}</td>}
                       {!isMobile && <td className="px-3 py-2 text-right text-muted-foreground">{r.point_count}</td>}
                     </tr>
                   ))}
@@ -263,11 +291,13 @@ function LookupTab({ isMobile }: { isMobile: boolean }) {
               <div className="w-56 shrink-0 border border-border rounded-lg p-3 bg-card h-fit" style={{ fontSize: 13 }}>
                 <p className="font-semibold text-sm mb-2">Tóm tắt kỳ</p>
                 <div className="space-y-1.5 text-muted-foreground">
-                  <Row label="Giá đầu kỳ" value={fmt(summary.startPrice)} />
-                  <Row label="Giá cuối kỳ" value={fmt(summary.endPrice)} />
-                  <Row label="Cao nhất" value={fmt(summary.high)} />
-                  <Row label="Thấp nhất" value={fmt(summary.low)} />
-                  <Row label="Thay đổi kỳ" value={`${summary.change > 0 ? '+' : ''}${fmt(summary.change)}`}
+                  <Row label="Đầu kỳ — Mua" value={fmt(summary.startBuy)} />
+                  <Row label="Đầu kỳ — Bán" value={fmt(summary.startSell)} />
+                  <Row label="Cuối kỳ — Mua" value={fmt(summary.endBuy)} />
+                  <Row label="Cuối kỳ — Bán" value={fmt(summary.endSell)} />
+                  <Row label="Cao nhất (mua)" value={fmt(summary.high)} />
+                  <Row label="Thấp nhất (mua)" value={fmt(summary.low)} />
+                  <Row label="Thay đổi kỳ" value={`${summary.change > 0 ? '+' : ''}${fmt(summary.change)} (${summary.changePct > 0 ? '+' : ''}${summary.changePct}%)`}
                     color={summary.change > 0 ? BUY_COLOR : summary.change < 0 ? SELL_COLOR : undefined} />
                   <Row label="Tổng ngày" value={String(summary.totalDays)} />
                 </div>
@@ -317,6 +347,14 @@ function DayDetailModal({ date, onClose }: { date: string; onClose: () => void }
     sell: Number(p.sell_price),
   }));
 
+  const open = points[0];
+  const close = points[points.length - 1];
+  const dayChange = open && close ? Number(close.buy_price) - Number(open.buy_price) : 0;
+  const dayChangePct = open && Number(open.buy_price) > 0 ? (dayChange / Number(open.buy_price)) * 100 : 0;
+
+  // Newest first for table
+  const tableRows = [...points].reverse();
+
   return (
     <Dialog open onOpenChange={() => onClose()}>
       <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
@@ -341,39 +379,60 @@ function DayDetailModal({ date, onClose }: { date: string; onClose: () => void }
             <table className="w-full mt-2" style={{ fontSize: 13 }}>
               <thead>
                 <tr className="bg-secondary/50">
-                  <th className="text-left px-2 py-1.5">Giờ</th>
+                  <th className="text-left px-2 py-1.5">Thời gian</th>
                   <th className="text-right px-2 py-1.5">Mua</th>
                   <th className="text-right px-2 py-1.5">Bán</th>
                   <th className="text-right px-2 py-1.5">Thay đổi</th>
-                  <th className="text-center px-2 py-1.5"></th>
                 </tr>
               </thead>
               <tbody>
-                {points.map((p, i) => {
-                  const prev = points[i - 1];
+                {tableRows.map((p) => {
+                  const idx = points.indexOf(p);
+                  const prev = points[idx - 1];
                   const diff = prev ? Number(p.buy_price) - Number(prev.buy_price) : 0;
                   return (
                     <tr key={p.id} className="border-t border-border/30"
                       style={{ opacity: p.is_after_hours ? 0.5 : 1 }}>
-                      <td className="px-2 py-1.5">{p.time.slice(0, 5)}</td>
+                      <td className="px-2 py-1.5">
+                        <span className="font-medium">{p.time.slice(0, 5)}</span>
+                        {p.is_open && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ backgroundColor: 'rgba(29,158,117,0.18)', color: '#0f7a5a' }}>MỞ</span>}
+                        {p.is_close && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ backgroundColor: 'rgba(216,90,48,0.18)', color: '#b04420' }}>ĐÓNG</span>}
+                      </td>
                       <td className="px-2 py-1.5 text-right" style={{ color: BUY_COLOR }}>{fmt(Number(p.buy_price))}</td>
                       <td className="px-2 py-1.5 text-right" style={{ color: SELL_COLOR }}>{fmt(Number(p.sell_price))}</td>
                       <td className="px-2 py-1.5 text-right">
-                        {i === 0 ? '—' : (
+                        {!prev ? '—' : (
                           <span style={{ color: diff > 0 ? BUY_COLOR : diff < 0 ? SELL_COLOR : undefined }}>
-                            {diff > 0 ? '+' : ''}{fmt(diff)}
+                            {diff > 0 ? '↑ +' : diff < 0 ? '↓ ' : ''}{fmt(diff)}
                           </span>
                         )}
-                      </td>
-                      <td className="px-2 py-1.5 text-center text-xs">
-                        {p.is_open && <span className="text-[#1D9E75]">Mở cửa</span>}
-                        {p.is_close && <span className="text-[#D85A30]">Đóng cửa</span>}
                       </td>
                     </tr>
                   );
                 })}
+                {tableRows.length === 0 && (
+                  <tr><td colSpan={4} className="px-2 py-6 text-center text-muted-foreground">Chưa có dữ liệu trong ngày này</td></tr>
+                )}
               </tbody>
             </table>
+
+            {open && close && (
+              <div className="mt-3 p-3 rounded-md bg-secondary/40 text-xs space-y-0.5">
+                <p>
+                  <span className="text-muted-foreground">Mở:</span>{' '}
+                  <span className="font-medium">{fmt(Number(open.buy_price))} / {fmt(Number(open.sell_price))}</span>
+                  {' → '}
+                  <span className="text-muted-foreground">Đóng:</span>{' '}
+                  <span className="font-medium">{fmt(Number(close.buy_price))} / {fmt(Number(close.sell_price))}</span>
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Thay đổi ngày:</span>{' '}
+                  <span className="font-semibold" style={{ color: dayChange > 0 ? BUY_COLOR : dayChange < 0 ? SELL_COLOR : undefined }}>
+                    {dayChange > 0 ? '+' : ''}{fmt(dayChange)} ({dayChangePct > 0 ? '+' : ''}{dayChangePct.toFixed(2)}%)
+                  </span>
+                </p>
+              </div>
+            )}
           </>
         )}
       </DialogContent>
