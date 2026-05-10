@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
+import { formatVN, nowVN } from '@/utils/vietnam-time';
 
 const BUY_COLOR = '#1D9E75';
 const SELL_COLOR = '#D85A30';
@@ -26,6 +27,19 @@ function fmt(n: number | null | undefined): string {
 function fmtDate(d: string): string {
   const [y, m, dd] = d.split('-');
   return `${dd}/${m}/${y}`;
+}
+
+function VietnamClock() {
+  const [now, setNow] = useState<Date>(() => nowVN());
+  useEffect(() => {
+    const t = setInterval(() => setNow(nowVN()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-muted/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+      🕐 {formatVN(now)} (Giờ VN)
+    </span>
+  );
 }
 
 interface DailySummary {
@@ -54,7 +68,10 @@ const GoldPriceHistory = () => {
         <h1 className="text-xl md:text-2xl font-display font-bold text-foreground mb-1">
           📊 Lịch Sử Giá Vàng Nhẫn 9999
         </h1>
-        <p className="text-sm text-muted-foreground mb-4">Dữ liệu thực tế tại Kim Linh Jewelry</p>
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <p className="text-sm text-muted-foreground">Dữ liệu thực tế tại Kim Linh Jewelry</p>
+          <VietnamClock />
+        </div>
 
         <Tabs defaultValue="lookup">
           <TabsList className="mb-4">
