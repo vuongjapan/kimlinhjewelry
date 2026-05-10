@@ -36,9 +36,12 @@ Deno.serve(async (req) => {
     )
 
     const now = new Date()
-    const dateStr = now.toISOString().split('T')[0]
-    const timeStr = now.toTimeString().split(' ')[0] // HH:MM:SS
-    const hour = now.getHours()
+    // Convert to Vietnam time (UTC+7) for date/time fields stored as
+    // local wall-clock values in the DB (date / time without time zone).
+    const vnNow = new Date(now.getTime() + 7 * 60 * 60 * 1000)
+    const dateStr = vnNow.toISOString().split('T')[0]
+    const timeStr = vnNow.toISOString().split('T')[1].split('.')[0] // HH:MM:SS in VN
+    const hour = vnNow.getUTCHours() // hours in VN since vnNow is shifted
     const isAfterHours = hour >= 17
 
     // Check if same price already saved (dedup)
